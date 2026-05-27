@@ -3,9 +3,9 @@ services:
     name: ghostoperator
     runtime: go
     rootDir: backend
-    buildCommand: go build -o ../ghostoperator-server ./cmd/server
-    startCommand: ../ghostoperator-server -static "" -port $PORT
+    buildCommand: go build -o server ./cmd/server
+    startCommand: ./server -static "" -port $PORT
     envVars:
       - key: GEMINI_API_KEY
-        sync: false          # you'll paste this in the Render dashboard
+        sync: false          # paste this in the Render dashboard
     healthCheckPath: /health
