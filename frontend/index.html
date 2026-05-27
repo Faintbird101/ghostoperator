@@ -36,15 +36,15 @@ const MODELS = [
 ];
 
 const TONE_GROUPS = [
-  { id: 'calm',       label: 'Calm / Soft',          tones: ['Calm','Peaceful','Gentle','Cozy','Serene','Warm'] },
-  { id: 'happy',      label: 'Happy / Positive',      tones: ['Cheerful','Bright','Uplifting','Joyful','Sunny','Optimistic'] },
-  { id: 'casual',     label: 'Cool / Casual',         tones: ['Casual','Chill','Relaxed','Easygoing','Conversational','Natural'] },
-  { id: 'confident',  label: 'Confident / Powerful',  tones: ['Bold','Strong','Fierce','Assertive','Magnetic','Fearless'] },
-  { id: 'creative',   label: 'Creative / Dreamy',     tones: ['Dreamy','Artistic','Whimsical','Imaginative','Ethereal','Cinematic'] },
-  { id: 'dark',       label: 'Dark / Moody',          tones: ['Moody','Mysterious','Edgy','Gritty','Brooding','Intense'] },
-  { id: 'luxury',     label: 'Luxury / Elegant',      tones: ['Elegant','Sophisticated','Polished','Luxurious','Refined','Glamorous'] },
-  { id: 'energetic',  label: 'Energetic / Fun',       tones: ['Playful','Vibrant','Wild','Spontaneous','Lively','Dynamic'] },
   { id: 'romantic',   label: 'Romantic / Flirty',     tones: ['Flirty','Sultry','Teasing','Charming','Sensual','Alluring'] },
+  { id: 'casual',     label: 'Cool / Casual',         tones: ['Casual','Chill','Relaxed','Easygoing','Conversational','Natural'] },
+  { id: 'energetic',  label: 'Energetic / Fun',       tones: ['Playful','Vibrant','Wild','Spontaneous','Lively','Dynamic'] },
+  { id: 'happy',      label: 'Happy / Positive',      tones: ['Cheerful','Bright','Uplifting','Joyful','Sunny','Optimistic'] },
+  { id: 'calm',       label: 'Calm / Soft',           tones: ['Calm','Peaceful','Gentle','Cozy','Serene','Warm'] },
+  { id: 'confident',  label: 'Confident / Powerful',  tones: ['Bold','Strong','Fierce','Assertive','Magnetic','Fearless'] },
+  { id: 'dark',       label: 'Dark / Moody',          tones: ['Moody','Mysterious','Edgy','Gritty','Brooding','Intense'] },
+  { id: 'creative',   label: 'Creative / Dreamy',     tones: ['Dreamy','Artistic','Whimsical','Imaginative','Ethereal','Cinematic'] },
+  { id: 'luxury',     label: 'Luxury / Elegant',      tones: ['Elegant','Sophisticated','Polished','Luxurious','Refined','Glamorous'] },
   { id: 'modern',     label: 'Modern / Trendy',       tones: ['Trendy','Aesthetic','Minimal','Clean','Vibey','Stylish'] },
 ];
 
@@ -179,7 +179,7 @@ function ModelSelector({ model, setModel, getUsage, getStatus, compact = false }
 
 // ─── ToneSelector ─────────────────────────────────────────────────────────────
 function ToneSelector({ tones, setTones }) {
-  const [activeGroup, setActiveGroup] = useState(TONE_GROUPS[2].id); // default: Cool/Casual
+  const [activeGroup, setActiveGroup] = useState(TONE_GROUPS[0].id); // default: Romantic/Flirty
 
   const currentGroup = TONE_GROUPS.find(g => g.id === activeGroup);
 
@@ -270,7 +270,7 @@ function App() {
   const [ocrStatus, setOcrStatus]       = useState('idle');
 
   // Parameters
-  const [tones, setTones]   = useState(['Casual', 'Warm', 'Playful']);
+  const [tones, setTones]   = useState(['Casual', 'Flirty', 'Charming']);
   const [length, setLength] = useState('default');
   const [context, setContext] = useState('');
   const [model, setModel]   = useState(MODELS[0]);
@@ -396,7 +396,7 @@ function App() {
 
     if (isMobile) setActiveTab('results');
 
-    const requested = (tones.length ? tones : ['Casual', 'Warm', 'Playful']).slice(0, 4);
+    const requested = (tones.length ? tones : ['Casual', 'Flirty', 'Charming']).slice(0, 4);
     const skeletons = requested.map((tn, i) => ({
       id: `c${i}-${tn.toLowerCase()}`, tone: tn, text: '', streaming: true,
     }));
@@ -820,7 +820,7 @@ function App() {
                 )}
               </button>
               <button className="btn-ghost" onClick={() => {
-                setContext(''); setTones(['Casual','Warm','Playful']); setLength('default');
+                setContext(''); setTones(['Casual','Flirty','Charming']); setLength('default');
               }}>Reset</button>
             </div>
           </div>
