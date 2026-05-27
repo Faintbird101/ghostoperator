@@ -387,3 +387,95 @@ body[data-theme="violet"]{--accent:oklch(0.75 0.18 295);--accent-dim:oklch(0.75 
 body[data-density="compact"] .col{gap:12px;padding:18px}
 body[data-density="compact"] .cand{padding:11px 12px 10px}
 body[data-density="compact"] .controls-card{padding:14px;gap:10px}
+
+/* ── Mobile Tab Bar ──────────────────────────────────────────────────────────── */
+.mobile-tabs{display:none}
+
+/* ── Mobile "continue" button ────────────────────────────────────────────────── */
+.btn-mobile-next{
+  display:none;
+  width:100%;padding:14px;border-radius:6px;
+  border:1px solid var(--accent-line);
+  background:linear-gradient(180deg, var(--accent-dim), oklch(0.85 0.16 155 / .05));
+  color:var(--accent);font-family:var(--mono);font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;font-weight:600;cursor:pointer;transition:all .15s;
+}
+.btn-mobile-next:hover{background:oklch(0.85 0.16 155 / .2)}
+
+/* ── Responsive: tablet (≤ 1100px already stacks cols) ───────────────────────── */
+
+/* ── Responsive: phone (≤ 767px) ─────────────────────────────────────────────── */
+@media (max-width: 767px) {
+
+  /* Topbar */
+  .topbar{padding:10px 14px}
+  .topbar-meta{display:none}
+  .brand-sub{display:none}
+  .brand-mark{width:22px;height:22px}
+
+  /* Mobile tab bar appears */
+  .mobile-tabs{
+    display:flex;
+    border-bottom:1px solid var(--line);
+    background:var(--bg-elev);
+    position:sticky;
+    top:48px;
+    z-index:9;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .mobile-tabs::-webkit-scrollbar{display:none}
+  .mobile-tab{
+    flex:1;min-width:90px;
+    appearance:none;border:0;border-bottom:2px solid transparent;
+    background:transparent;color:var(--ink-fade);
+    font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:11px 8px;cursor:pointer;transition:all .15s;white-space:nowrap;
+  }
+  .mobile-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+  /* Workspace: single column, only show active tab's col */
+  .workspace{grid-template-columns:1fr !important;grid-template-rows:auto}
+  .col{display:none;padding:16px;gap:14px;border:0 !important}
+  .col.tab-active{display:flex}
+
+  /* Show mobile "continue" button */
+  .btn-mobile-next{display:block}
+
+  /* Empty state */
+  .empty-stage{padding:32px 16px;gap:24px}
+  .empty-heading h1{font-size:clamp(32px,10vw,48px)}
+  .empty-heading p{font-size:14px}
+  .dropzone{max-width:100%;padding:32px 16px;gap:18px}
+  .drop-actions{flex-direction:column;align-items:stretch;gap:10px}
+  .chip-action{justify-content:center;padding:13px 14px;font-size:12px}
+  .drop-divider{text-align:center}
+
+  /* Controls */
+  .controls-grid{grid-template-columns:1fr}
+  .cta-row{flex-direction:column}
+  .btn-generate{width:100%}
+  .btn-ghost{width:100%}
+  .btn-generate .kbd{display:none}
+
+  /* Candidates — bigger tap targets */
+  .iconbtn{width:32px;height:32px}
+  .cand{padding:14px 12px 12px}
+
+  /* Statusbar */
+  .statusbar{padding:7px 14px}
+  .statusbar .group:last-child{display:none}
+
+  /* Source preview */
+  .src-preview-hd{padding:10px 14px}
+  .src-preview-hd .swap{font-size:12px;padding:4px 8px}
+  .bubble{font-size:14px;padding:10px 14px}
+
+  /* Toast — full width on mobile */
+  .toast{
+    left:12px;right:12px;bottom:16px;
+    transform:none;text-align:center;
+  }
+  @keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+}

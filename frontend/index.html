@@ -42,18 +42,19 @@ const TWEAK_DEFAULTS = {
 // ─── Icon ─────────────────────────────────────────────────────────────────────
 const Icon = ({ name, size = 14 }) => {
   const paths = {
-    copy: <><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></>,
-    star: <path d="M12 2l3 7 7 .6-5.3 4.7 1.6 7-6.3-3.7-6.3 3.7 1.6-7L2 9.6 9 9l3-7z" fill="currentColor" stroke="none"/>,
-    starO: <path d="M12 2l3 7 7 .6-5.3 4.7 1.6 7-6.3-3.7-6.3 3.7 1.6-7L2 9.6 9 9l3-7z"/>,
-    refresh: <><path d="M3 12a9 9 0 0115.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></>,
-    edit: <><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></>,
-    arrow: <><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></>,
-    x: <><path d="M18 6L6 18M6 6l12 12"/></>,
-    bolt: <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" fill="currentColor" stroke="none"/>,
-    image: <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></>,
-    check: <path d="M4 12l5 5L20 6"/>,
+    copy:     <><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></>,
+    star:     <path d="M12 2l3 7 7 .6-5.3 4.7 1.6 7-6.3-3.7-6.3 3.7 1.6-7L2 9.6 9 9l3-7z" fill="currentColor" stroke="none"/>,
+    starO:    <path d="M12 2l3 7 7 .6-5.3 4.7 1.6 7-6.3-3.7-6.3 3.7 1.6-7L2 9.6 9 9l3-7z"/>,
+    refresh:  <><path d="M3 12a9 9 0 0115.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></>,
+    edit:     <><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></>,
+    arrow:    <><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></>,
+    x:        <><path d="M18 6L6 18M6 6l12 12"/></>,
+    bolt:     <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" fill="currentColor" stroke="none"/>,
+    image:    <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></>,
+    check:    <path d="M4 12l5 5L20 6"/>,
     chevDown: <path d="M6 9l6 6 6-6"/>,
-    scan: <><path d="M3 7V5a2 2 0 012-2h2"/><path d="M17 3h2a2 2 0 012 2v2"/><path d="M21 17v2a2 2 0 01-2 2h-2"/><path d="M7 21H5a2 2 0 01-2-2v-2"/><line x1="3" y1="12" x2="21" y2="12"/></>,
+    scan:     <><path d="M3 7V5a2 2 0 012-2h2"/><path d="M17 3h2a2 2 0 012 2v2"/><path d="M21 17v2a2 2 0 01-2 2h-2"/><path d="M7 21H5a2 2 0 01-2-2v-2"/><line x1="3" y1="12" x2="21" y2="12"/></>,
+    camera:   <><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -66,6 +67,12 @@ const Icon = ({ name, size = 14 }) => {
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Device detection
+  const [isTouch] = useState(() => 'ontouchstart' in window || navigator.maxTouchPoints > 0);
+
+  // Mobile tab navigation: 'source' | 'params' | 'results'
+  const [activeTab, setActiveTab] = useState('source');
 
   // Image state
   const [hasImage, setHasImage]         = useState(false);
@@ -92,7 +99,8 @@ function App() {
 
   // UI
   const [toast, setToast]   = useState(null);
-  const fileInputRef = useRef(null);
+  const fileInputRef   = useRef(null);
+  const cameraInputRef = useRef(null);
   const sessionId = useRef(Math.random().toString(36).slice(2,8).toUpperCase()).current;
 
   // Apply theme and density to body
@@ -163,6 +171,9 @@ function App() {
     setCandidates([]);
     setPhase('ready');
 
+    // Auto-advance to params tab on mobile
+    if (isTouch) setActiveTab('params');
+
     const fd = new FormData();
     fd.append('image', file);
     fd.append('model', model.id);
@@ -190,6 +201,9 @@ function App() {
   const generate = async () => {
     setPhase('generating');
     setStarred({});
+
+    // Auto-advance to results tab on mobile
+    if (isTouch) setActiveTab('results');
 
     const requested = (tones.length ? tones : ['Witty', 'Dry', 'Sincere']).slice(0, 4);
 
@@ -348,7 +362,20 @@ function App() {
     setOcrStatus('idle');
     setCandidates([]);
     setPhase('ready');
+    setActiveTab('source');
   };
+
+  // ─── Shared inputs ───────────────────────────────────────────────────────────
+  const FileInputs = (
+    <>
+      <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}}
+             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value=''; }} />
+      {isTouch && (
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
+               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value=''; }} />
+      )}
+    </>
+  );
 
   // ─── Topbar ─────────────────────────────────────────────────────────────────
   const Topbar = (
@@ -368,11 +395,31 @@ function App() {
     </header>
   );
 
+  // ─── Mobile Tab Bar (only when image is loaded) ──────────────────────────────
+  const MobileTabBar = hasImage ? (
+    <nav className="mobile-tabs">
+      {[
+        { id: 'source',  label: '01 · Source'  },
+        { id: 'params',  label: '02 · Params'  },
+        { id: 'results', label: '03 · Replies' },
+      ].map(tab => (
+        <button
+          key={tab.id}
+          className={`mobile-tab ${activeTab === tab.id ? 'active' : ''}`}
+          onClick={() => setActiveTab(tab.id)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </nav>
+  ) : null;
+
   // ─── EMPTY STATE ─────────────────────────────────────────────────────────────
   if (!hasImage) {
     return (
       <div className="app">
         {Topbar}
+        {FileInputs}
         <div className="workspace no-image">
           <div className="col">
             <div className="empty-stage">
@@ -400,18 +447,27 @@ function App() {
                   <div className="chip-action" onClick={() => fileInputRef.current?.click()}>
                     <Icon name="image" /> Browse files
                   </div>
-                  <span className="drop-divider">— OR —</span>
-                  <div className="chip-action">
-                    <kbd>⌘V</kbd> Paste from clipboard
-                  </div>
-                  <span className="drop-divider">— OR —</span>
-                  <div className="chip-action">
-                    <Icon name="arrow" /> Drag in
-                  </div>
+                  {isTouch ? (
+                    <>
+                      <span className="drop-divider">— OR —</span>
+                      <div className="chip-action camera-chip" onClick={() => cameraInputRef.current?.click()}>
+                        <Icon name="camera" size={15}/> Take photo
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="drop-divider">— OR —</span>
+                      <div className="chip-action">
+                        <kbd>⌘V</kbd> Paste from clipboard
+                      </div>
+                      <span className="drop-divider">— OR —</span>
+                      <div className="chip-action">
+                        <Icon name="arrow" /> Drag in
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="drop-meta">PNG · JPG · WEBP — max 20 MB</div>
-                <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}}
-                       onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
               </div>
             </div>
           </div>
@@ -436,10 +492,12 @@ function App() {
   return (
     <div className="app">
       {Topbar}
+      {MobileTabBar}
+      {FileInputs}
       <div className="workspace">
 
         {/* ── LEFT: Source ── */}
-        <div className="col left">
+        <div className={`col left ${activeTab === 'source' ? 'tab-active' : ''}`}>
           <div className="section-label">01 · Source</div>
 
           <div className="src-preview">
@@ -493,6 +551,13 @@ function App() {
             </div>
           </div>
 
+          {/* Mobile: continue button */}
+          {isTouch && (
+            <button className="btn-mobile-next" onClick={() => setActiveTab('params')}>
+              Set Parameters →
+            </button>
+          )}
+
           {t.showHistory && (
             <>
               <div className="section-label">Recent intercepts</div>
@@ -507,7 +572,7 @@ function App() {
         </div>
 
         {/* ── CENTER: Parameters ── */}
-        <div className="col center">
+        <div className={`col center ${activeTab === 'params' ? 'tab-active' : ''}`}>
           <div className="section-label">02 · Parameters</div>
 
           <div className="controls-card">
@@ -627,7 +692,7 @@ function App() {
         </div>
 
         {/* ── RIGHT: Candidates ── */}
-        <div className="col right">
+        <div className={`col right ${activeTab === 'results' ? 'tab-active' : ''}`}>
           <div className="intercept-hd">
             <div className="section-label" style={{margin:0}}>03 · Candidate replies</div>
             {phase === 'result' && (
