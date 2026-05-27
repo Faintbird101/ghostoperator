@@ -35,7 +35,18 @@ const MODELS = [
   { id: 'gemini-3.1-flash-lite',  icon: '💨', name: '3.1 Flash Lite',  rpm: 30,  daily: null, rate: '~30 rpm',             desc: 'Fast · high quota' },
 ];
 
-const TONES = ['Witty', 'Dry', 'Sincere', 'Concise', 'Playful', 'Casual', 'Default'];
+const TONE_GROUPS = [
+  { id: 'calm',       label: 'Calm / Soft',          tones: ['Calm','Peaceful','Gentle','Cozy','Serene','Warm'] },
+  { id: 'happy',      label: 'Happy / Positive',      tones: ['Cheerful','Bright','Uplifting','Joyful','Sunny','Optimistic'] },
+  { id: 'casual',     label: 'Cool / Casual',         tones: ['Casual','Chill','Relaxed','Easygoing','Conversational','Natural'] },
+  { id: 'confident',  label: 'Confident / Powerful',  tones: ['Bold','Strong','Fierce','Assertive','Magnetic','Fearless'] },
+  { id: 'creative',   label: 'Creative / Dreamy',     tones: ['Dreamy','Artistic','Whimsical','Imaginative','Ethereal','Cinematic'] },
+  { id: 'dark',       label: 'Dark / Moody',          tones: ['Moody','Mysterious','Edgy','Gritty','Brooding','Intense'] },
+  { id: 'luxury',     label: 'Luxury / Elegant',      tones: ['Elegant','Sophisticated','Polished','Luxurious','Refined','Glamorous'] },
+  { id: 'energetic',  label: 'Energetic / Fun',       tones: ['Playful','Vibrant','Wild','Spontaneous','Lively','Dynamic'] },
+  { id: 'romantic',   label: 'Romantic / Flirty',     tones: ['Flirty','Sultry','Teasing','Charming','Sensual','Alluring'] },
+  { id: 'modern',     label: 'Modern / Trendy',       tones: ['Trendy','Aesthetic','Minimal','Clean','Vibey','Stylish'] },
+];
 
 const TWEAK_DEFAULTS = {
   theme: 'phosphor',
@@ -166,6 +177,73 @@ function ModelSelector({ model, setModel, getUsage, getStatus, compact = false }
   );
 }
 
+// ─── ToneSelector ─────────────────────────────────────────────────────────────
+function ToneSelector({ tones, setTones }) {
+  const [activeGroup, setActiveGroup] = useState(TONE_GROUPS[2].id); // default: Cool/Casual
+
+  const currentGroup = TONE_GROUPS.find(g => g.id === activeGroup);
+
+  const toggle = (tn) => {
+    setTones(prev =>
+      prev.includes(tn)
+        ? prev.filter(x => x !== tn)
+        : prev.length < 4 ? [...prev, tn] : prev
+    );
+  };
+
+  return (
+    <div className="tone-selector">
+      {/* Header: label + selected pills */}
+      <div className="tone-selector-hd">
+        <span className="tone-selector-label">
+          Tone — pick up to 4
+          {tones.length === 4 && <span className="tone-max-hint"> (max)</span>}
+        </span>
+        {tones.length > 0 && (
+          <div className="selected-tones">
+            {tones.map(tn => (
+              <span key={tn} className="selected-tone-pill" onClick={() => toggle(tn)}>
+                {tn}<span className="rm"> ×</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Category tabs */}
+      <div className="tone-cats">
+        {TONE_GROUPS.map(g => (
+          <button
+            key={g.id}
+            className={`tone-cat ${activeGroup === g.id ? 'active' : ''}`}
+            onClick={() => setActiveGroup(g.id)}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Subtone chips */}
+      <div className="tone-chips">
+        {currentGroup.tones.map(tn => {
+          const on      = tones.includes(tn);
+          const maxed   = !on && tones.length >= 4;
+          return (
+            <button
+              key={tn}
+              className={`tone-chip ${on ? 'on' : ''} ${maxed ? 'maxed' : ''}`}
+              onClick={() => !maxed && toggle(tn)}
+            >
+              {on && <span className="x"><Icon name="check" size={10}/></span>}
+              {tn}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
@@ -192,7 +270,7 @@ function App() {
   const [ocrStatus, setOcrStatus]       = useState('idle');
 
   // Parameters
-  const [tones, setTones]   = useState(['Witty', 'Dry', 'Sincere']);
+  const [tones, setTones]   = useState(['Casual', 'Warm', 'Playful']);
   const [length, setLength] = useState('default');
   const [context, setContext] = useState('');
   const [model, setModel]   = useState(MODELS[0]);
@@ -318,7 +396,7 @@ function App() {
 
     if (isMobile) setActiveTab('results');
 
-    const requested = (tones.length ? tones : ['Witty', 'Dry', 'Sincere']).slice(0, 4);
+    const requested = (tones.length ? tones : ['Casual', 'Warm', 'Playful']).slice(0, 4);
     const skeletons = requested.map((tn, i) => ({
       id: `c${i}-${tn.toLowerCase()}`, tone: tn, text: '', streaming: true,
     }));
@@ -447,10 +525,6 @@ function App() {
   const copyText = (text) => {
     if (navigator.clipboard) navigator.clipboard.writeText(text);
     showToast('Copied to clipboard');
-  };
-
-  const toggleTone = (tn) => {
-    setTones(p => p.includes(tn) ? p.filter(x => x !== tn) : [...p, tn].slice(0, 4));
   };
 
   const resetImage = () => {
@@ -691,18 +765,7 @@ function App() {
           <div className="section-label">02 · Parameters</div>
 
           <div className="controls-card">
-            <div className="field">
-              <label>Tone — pick up to 4</label>
-              <div className="tone-chips">
-                {TONES.map(tn => (
-                  <button key={tn} className={`tone-chip ${tones.includes(tn) ? 'on' : ''}`}
-                          onClick={() => toggleTone(tn)}>
-                    {tones.includes(tn) && <span className="x"><Icon name="check" size={10}/></span>}
-                    {tn}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ToneSelector tones={tones} setTones={setTones} />
 
             <div className="controls-grid">
               <div className="field">
@@ -757,7 +820,7 @@ function App() {
                 )}
               </button>
               <button className="btn-ghost" onClick={() => {
-                setContext(''); setTones(['Witty','Dry','Sincere']); setLength('default');
+                setContext(''); setTones(['Casual','Warm','Playful']); setLength('default');
               }}>Reset</button>
             </div>
           </div>

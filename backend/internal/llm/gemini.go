@@ -436,16 +436,79 @@ func (c *Client) streamDraft(threadText, tone, length, context, model string, ou
 	}
 
 	toneDesc := map[string]string{
-		"Witty":   "Clever and playful with light humour. Quick, sharp, fun.",
-		"Dry":     "Understated and deadpan. Minimal emotion, maximum cool.",
-		"Sincere": "Genuine, warm, and direct. Authentic without being sappy.",
-		"Concise": "Minimal words. Maximum effect. Strip it right down.",
-		"Playful": "Upbeat and fun. Energy and enthusiasm — emoji welcome.",
-		"Casual":  "Relaxed and informal. Like texting a close friend — easy, natural, zero formality.",
-		"Default": "Balanced and natural. Mirror the conversation's existing tone exactly.",
+		// Calm / Soft
+		"Calm":           "Composed and steady. No rush, no drama — just grounded presence.",
+		"Peaceful":       "Serene and unhurried. Soft words, easy energy.",
+		"Gentle":         "Tender and considerate. Speak softly, with care.",
+		"Cozy":           "Warm and intimate. Like a quiet conversation over tea.",
+		"Serene":         "Still and clear. Tranquil without being distant.",
+		"Warm":           "Friendly and inviting. Genuine warmth in every word.",
+		// Happy / Positive
+		"Cheerful":       "Bright and upbeat. Smile in the words.",
+		"Bright":         "Light and energetic. Positive, forward-looking.",
+		"Uplifting":      "Encouraging and hopeful. Make them feel good.",
+		"Joyful":         "Genuinely delighted. Full of happy energy.",
+		"Sunny":          "Optimistic and breezy. Always the bright side.",
+		"Optimistic":     "Forward-looking and confident. Good things are coming.",
+		// Cool / Casual
+		"Casual":         "Relaxed and informal. Like texting a close friend.",
+		"Chill":          "Low-key and unbothered. Easy, no pressure.",
+		"Relaxed":        "Unhurried and comfortable. No tension, no formality.",
+		"Easygoing":      "Go with the flow. Light, simple, unforced.",
+		"Conversational": "Natural and flowing. Like a real conversation.",
+		"Natural":        "Authentic and unfiltered. Just how people actually talk.",
+		// Confident / Powerful
+		"Bold":           "Direct and unapologetic. Strong statements, no hedging.",
+		"Strong":         "Solid and certain. Conviction in every word.",
+		"Fierce":         "Intense and uncompromising. No holding back.",
+		"Assertive":      "Clear and decisive. Says exactly what it means.",
+		"Magnetic":       "Commanding and captivating. Hard to ignore.",
+		"Fearless":       "Unafraid and frank. Says the thing others won't.",
+		// Creative / Dreamy
+		"Dreamy":         "Soft and poetic. Floats a little. Evocative.",
+		"Artistic":       "Thoughtful and expressive. Sees things differently.",
+		"Whimsical":      "Playfully imaginative. Light, unexpected, delightful.",
+		"Imaginative":    "Rich and inventive. Paints pictures with words.",
+		"Ethereal":       "Otherworldly and delicate. Light as air.",
+		"Cinematic":      "Vivid and dramatic. Like a key scene in a movie.",
+		// Dark / Moody
+		"Moody":          "Brooding and atmospheric. Depth under the surface.",
+		"Mysterious":     "Intriguing and guarded. Hints more than it tells.",
+		"Edgy":           "Sharp and a little dangerous. Cuts through noise.",
+		"Gritty":         "Raw and unpolished. Real, rough-edged.",
+		"Brooding":       "Introspective and heavy. Thoughtful weight in every line.",
+		"Intense":        "Focused and serious. Every word carries full weight.",
+		// Luxury / Elegant
+		"Elegant":        "Graceful and refined. Nothing out of place.",
+		"Sophisticated":  "Cultured and measured. Intelligent restraint.",
+		"Polished":       "Smooth and precise. No rough edges whatsoever.",
+		"Luxurious":      "Indulgent and rich. Every detail feels considered.",
+		"Refined":        "Tasteful and understated. Quiet class.",
+		"Glamorous":      "Dazzling and stylish. Makes a strong impression.",
+		// Energetic / Fun
+		"Playful":        "Light and fun. Energy and enthusiasm — emoji welcome.",
+		"Vibrant":        "Alive and expressive. Bursting with colour and life.",
+		"Wild":           "Unrestrained and electric. Anything goes.",
+		"Spontaneous":    "Unpredictable and exciting. Full of surprises.",
+		"Lively":         "Animated and engaged. Brings the energy.",
+		"Dynamic":        "Fast, punchy, always moving forward.",
+		// Romantic / Flirty
+		"Flirty":         "Playful and suggestive. A little teasing, a fun spark.",
+		"Sultry":         "Slow and magnetic. Low heat, high intrigue.",
+		"Teasing":        "Playfully provocative. Keeps them guessing.",
+		"Charming":       "Winning and warm. Makes them smile and lean in.",
+		"Sensual":        "Attentive and intimate. Notices every small detail.",
+		"Alluring":       "Draws them in irresistibly. Mysterious pull.",
+		// Modern / Trendy
+		"Trendy":         "Current and culturally aware. Speaks the moment.",
+		"Aesthetic":      "Curated and considered. Visually mindful in language.",
+		"Minimal":        "Stripped back. Say more with less.",
+		"Clean":          "Clear and uncluttered. Simple, direct, modern.",
+		"Vibey":          "Has a distinct atmosphere. You feel the vibe.",
+		"Stylish":        "Sharp and well-put-together. Effortlessly cool.",
 	}[tone]
 	if toneDesc == "" {
-		toneDesc = "Natural and conversational."
+		toneDesc = "Natural and conversational. Mirror the existing tone of the conversation."
 	}
 
 	sysPrompt := fmt.Sprintf(

@@ -241,7 +241,48 @@ input,textarea{font-family:inherit;color:inherit}
 }
 .tone-chip:hover{color:var(--ink);border-color:var(--ink-fade)}
 .tone-chip.on{background:var(--accent-dim);border-color:var(--accent-line);color:var(--accent)}
+.tone-chip.maxed{opacity:.35;cursor:not-allowed}
 .tone-chip .x{font-family:var(--mono);font-size:11px;opacity:.6}
+
+/* ── Tone selector (grouped) ─────────────────────────────────────────────────── */
+.tone-selector{display:flex;flex-direction:column;gap:10px}
+
+.tone-selector-hd{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;
+}
+.tone-selector-label{
+  font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-fade);white-space:nowrap;padding-top:2px;
+}
+.tone-max-hint{color:var(--warn);letter-spacing:.06em}
+
+.selected-tones{display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end;max-width:60%}
+.selected-tone-pill{
+  display:inline-flex;align-items:center;gap:3px;
+  padding:3px 9px;border-radius:99px;
+  background:var(--accent-dim);border:1px solid var(--accent-line);
+  color:var(--accent);font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+  cursor:pointer;transition:all .12s;
+}
+.selected-tone-pill:hover{background:oklch(0.85 0.16 155 / .25)}
+.selected-tone-pill .rm{opacity:.5;font-size:12px;line-height:1}
+
+/* Category tab row */
+.tone-cats{
+  display:flex;gap:5px;
+  overflow-x:auto;padding-bottom:2px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}
+.tone-cats::-webkit-scrollbar{display:none}
+.tone-cat{
+  appearance:none;cursor:pointer;flex-shrink:0;white-space:nowrap;
+  padding:5px 10px;border-radius:5px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+  border:1px solid var(--line);background:transparent;color:var(--ink-dim);
+  transition:all .12s;
+}
+.tone-cat:hover{border-color:var(--line-strong);color:var(--ink)}
+.tone-cat.active{background:var(--bg-elev-2);border-color:var(--accent-line);color:var(--accent)}
 
 /* Sliders */
 .slider-row{display:flex;align-items:center;gap:10px}
