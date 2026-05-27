@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GhostOperator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel">
+
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+const MODELS = [
+  { id: 'gemini-2.5-flash',       icon: '⚡', name: '2.5 Flash',       rate: '10 req/min · 250/day',   desc: 'Best default · fast, balanced' },
+  { id: 'gemini-2.5-flash-lite',  icon: '💨', name: '2.5 Flash Lite',  rate: '30 req/min · 1500/day',  desc: 'More quota · lightweight' },
+  { id: 'gemini-flash-latest',    icon: '🔄', name: 'Flash Latest',    rate: '10 req/min',              desc: 'Tracks current release' },
+  { id: 'gemini-3-flash-preview', icon: '🔮', name: '3 Flash Preview', rate: '~5 req/min',              desc: 'Experimental · next gen' },
+  { id: 'gemini-3.5-flash',       icon: '🌟', name: '3.5 Flash',       rate: '~10 req/min',             desc: 'Latest generation' },
+  { id: 'gemini-3.1-flash-lite',  icon: '💨', name: '3.1 Flash Lite',  rate: '~30 req/min',             desc: 'Fast · high quota' },
+];
+
+const TONES = ['Witty', 'Dry', 'Sincere', 'Concise', 'Playful'];
+
+const TWEAK_DEFAULTS = {
+  theme: 'phosphor',
+  density: 'regular',
+  showHistory: false,
+};
+
+// ─── Icon ─────────────────────────────────────────────────────────────────────
+const Icon = ({ name, size = 14 }) => {
+  const paths = {
+    copy: <><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></>,
+    star: <path d="M12 2l3 7 7 .6-5.3 4.7 1.6 7-6.3-3.7-6.3 3.7 1.6-7L2 9.6 9 9l3-7z" fill="currentColor" stroke="none"/>,
+    starO: <path d="M12 2l3 7 7 .6-5.3 4.7 1.6 7-6.3-3.7-6.3 3.7 1.6-7L2 9.6 9 9l3-7z"/>,
+    refresh: <><path d="M3 12a9 9 0 0115.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></>,
+    edit: <><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></>,
+    arrow: <><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></>,
+    x: <><path d="M18 6L6 18M6 6l12 12"/></>,
+    bolt: <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" fill="currentColor" stroke="none"/>,
+    image: <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></>,
+    check: <path d="M4 12l5 5L20 6"/>,
+    chevDown: <path d="M6 9l6 6 6-6"/>,
+    scan: <><path d="M3 7V5a2 2 0 012-2h2"/><path d="M17 3h2a2 2 0 012 2v2"/><path d="M21 17v2a2 2 0 01-2 2h-2"/><path d="M7 21H5a2 2 0 01-2-2v-2"/><line x1="3" y1="12" x2="21" y2="12"/></>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {paths[name]}
+    </svg>
+  );
+};
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Image state
+  const [hasImage, setHasImage]         = useState(false);
+  const [dragOver, setDragOver]         = useState(false);
+  const [sourceFile, setSourceFile]     = useState(null);
+  const [sourceUrl, setSourceUrl]       = useState(null);
+  const [sourceName, setSourceName]     = useState('');
+
+  // OCR state
+  const [parsedThread, setParsedThread] = useState([]);
+  const [ocrStatus, setOcrStatus]       = useState('idle'); // idle | scanning | done | error
+
+  // Parameters
+  const [tones, setTones]   = useState(['Witty', 'Dry', 'Sincere']);
+  const [length, setLength] = useState('default');
+  const [context, setContext] = useState('');
+  const [model, setModel]   = useState(MODELS[0]);
+  const [modelOpen, setModelOpen] = useState(false);
+
+  // Generation state
+  const [phase, setPhase]         = useState('ready'); // ready | generating | result
+  const [candidates, setCandidates] = useState([]);
+  const [starred, setStarred]     = useState({});
+
+  // UI
+  const [toast, setToast]   = useState(null);
+  const fileInputRef = useRef(null);
+  const sessionId = useRef(Math.random().toString(36).slice(2,8).toUpperCase()).current;
+
+  // Apply theme and density to body
+  useEffect(() => {
+    document.body.dataset.theme   = t.theme;
+    document.body.dataset.density = t.density;
+  }, [t.theme, t.density]);
+
+  // Close model dropdown on outside click
+  useEffect(() => {
+    if (!modelOpen) return;
+    const h = (e) => { if (!e.target.closest('.model-select-wrap')) setModelOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [modelOpen]);
+
+  // Keyboard: Cmd/Ctrl+Enter to generate
+  useEffect(() => {
+    const h = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (hasImage && phase !== 'generating') generate();
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  });
+
+  // Paste image from clipboard
+  useEffect(() => {
+    const onPaste = (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const it of items) {
+        if (it.type.startsWith('image/')) {
+          const file = it.getAsFile();
+          if (file) handleFile(file);
+          break;
+        }
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [model]);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  // ── handleFile — OCR the uploaded image ────────────────────────────────────
+  const handleFile = async (file) => {
+    if (!file?.type.startsWith('image/')) {
+      showToast('Please drop an image file (PNG, JPG, WebP)');
+      return;
+    }
+
+    // Revoke any previous object URL
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+
+    const url = URL.createObjectURL(file);
+    setSourceFile(file);
+    setSourceUrl(url);
+    setSourceName(file.name || 'screenshot.png');
+    setHasImage(true);
+    setOcrStatus('scanning');
+    setParsedThread([]);
+    setCandidates([]);
+    setPhase('ready');
+
+    const fd = new FormData();
+    fd.append('image', file);
+    fd.append('model', model.id);
+
+    try {
+      const res = await fetch('/api/ocr', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const { thread } = await res.json();
+      setParsedThread(thread || []);
+      setOcrStatus('done');
+      if (!thread || thread.length === 0) {
+        showToast('No messages detected — check the screenshot');
+      }
+    } catch (err) {
+      console.error('OCR error:', err);
+      setOcrStatus('error');
+      showToast('OCR failed — try a clearer screenshot');
+    }
+  };
+
+  // ── generate — draft replies via SSE ───────────────────────────────────────
+  const generate = async () => {
+    setPhase('generating');
+    setStarred({});
+
+    const requested = (tones.length ? tones : ['Witty', 'Dry', 'Sincere']).slice(0, 4);
+
+    // Seed skeletons immediately
+    const skeletons = requested.map((tn, i) => ({
+      id: `c${i}-${tn.toLowerCase()}`, tone: tn, text: '', streaming: true,
+    }));
+    setCandidates(skeletons);
+
+    try {
+      const res = await fetch('/api/draft-replies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thread: parsedThread,
+          tones: requested,
+          length,
+          context,
+          model: model.id,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+
+        const lines = buf.split('\n');
+        buf = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') {
+            setCandidates(prev => prev.map(c => c.streaming ? { ...c, streaming: false } : c));
+            setPhase('result');
+            continue;
+          }
+          try {
+            const chunk = JSON.parse(raw);
+            if (chunk.error) {
+              showToast(chunk.errCode === 'RATE_LIMIT'
+                ? 'Rate limit hit — try a different model'
+                : 'Generation failed — check console');
+              console.error('Draft error:', chunk);
+              continue;
+            }
+            if (chunk.streaming) {
+              // Skeleton already seeded — nothing to do
+            } else if (chunk.delta !== undefined) {
+              setCandidates(prev => prev.map(c =>
+                c.id === chunk.id ? { ...c, text: c.text + chunk.delta } : c
+              ));
+            } else if (chunk.done) {
+              setCandidates(prev => prev.map(c =>
+                c.id === chunk.id
+                  ? { ...c, streaming: false, tokens: chunk.tokens || 0, latency: chunk.latency || '—', confidence: chunk.confidence || 0.8 }
+                  : c
+              ));
+            }
+          } catch { /* malformed chunk */ }
+        }
+      }
+    } catch (err) {
+      console.error('Generate error:', err);
+      showToast('Generation failed');
+      setCandidates(prev => prev.map(c => c.streaming ? { ...c, streaming: false, text: '(generation failed)' } : c));
+      setPhase('ready');
+      return;
+    }
+
+    setPhase(p => p === 'generating' ? 'result' : p);
+  };
+
+  // ── regenerate one candidate ────────────────────────────────────────────────
+  const regenerateOne = async (idx) => {
+    const cand = candidates[idx];
+    if (!cand) return;
+
+    setCandidates(prev => prev.map((c, i) => i === idx ? { ...c, streaming: true, text: '' } : c));
+
+    try {
+      const res = await fetch('/api/draft-replies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thread: parsedThread,
+          tones: [cand.tone],
+          length,
+          context,
+          model: model.id,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let newText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') continue;
+          try {
+            const chunk = JSON.parse(raw);
+            if (chunk.delta) {
+              newText += chunk.delta;
+              setCandidates(prev => prev.map((c, i) => i === idx ? { ...c, text: newText } : c));
+            } else if (chunk.done) {
+              setCandidates(prev => prev.map((c, i) =>
+                i === idx ? { ...c, streaming: false, tokens: chunk.tokens || 0, latency: chunk.latency || '—', confidence: chunk.confidence || 0.8 } : c
+              ));
+            }
+          } catch { }
+        }
+      }
+    } catch (err) {
+      console.error('Regen error:', err);
+      showToast('Regeneration failed');
+      setCandidates(prev => prev.map((c, i) => i === idx ? { ...c, streaming: false } : c));
+    }
+    showToast('Regenerated');
+  };
+
+  const copyText = (text) => {
+    if (navigator.clipboard) navigator.clipboard.writeText(text);
+    showToast('Copied to clipboard');
+  };
+
+  const toggleTone = (tn) => {
+    setTones(p => p.includes(tn) ? p.filter(x => x !== tn) : [...p, tn].slice(0, 4));
+  };
+
+  const resetImage = () => {
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    setHasImage(false);
+    setSourceFile(null);
+    setSourceUrl(null);
+    setSourceName('');
+    setParsedThread([]);
+    setOcrStatus('idle');
+    setCandidates([]);
+    setPhase('ready');
+  };
+
+  // ─── Topbar ─────────────────────────────────────────────────────────────────
+  const Topbar = (
+    <header className="topbar">
+      <div className="brand">
+        <div className="brand-mark" />
+        <div className="brand-text">
+          <span className="brand-name">GHOST_OPERATOR</span>
+          <span className="brand-sub">Intercept · Analyze · Reply</span>
+        </div>
+      </div>
+      <div className="topbar-meta">
+        <span><span className="dot" />Channel Live</span>
+        <span>Session · {sessionId}</span>
+        <span>{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })} UTC</span>
+      </div>
+    </header>
+  );
+
+  // ─── EMPTY STATE ─────────────────────────────────────────────────────────────
+  if (!hasImage) {
+    return (
+      <div className="app">
+        {Topbar}
+        <div className="workspace no-image">
+          <div className="col">
+            <div className="empty-stage">
+              <div className="empty-heading">
+                <div className="ticker">Awaiting intercept</div>
+                <h1>Read the room<br /><em>for you.</em></h1>
+                <p>Drop a chat screenshot. GhostOperator reads the thread, weighs the tone, and drafts candidate replies you can actually send.</p>
+              </div>
+
+              <div
+                className={`dropzone ${dragOver ? 'drag' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault(); setDragOver(false);
+                  const file = e.dataTransfer.files[0];
+                  if (file) handleFile(file);
+                }}
+              >
+                <div className="corners">
+                  <span className="tl"/><span className="tr"/>
+                  <span className="bl"/><span className="br"/>
+                </div>
+                <div className="drop-actions">
+                  <div className="chip-action" onClick={() => fileInputRef.current?.click()}>
+                    <Icon name="image" /> Browse files
+                  </div>
+                  <span className="drop-divider">— OR —</span>
+                  <div className="chip-action">
+                    <kbd>⌘V</kbd> Paste from clipboard
+                  </div>
+                  <span className="drop-divider">— OR —</span>
+                  <div className="chip-action">
+                    <Icon name="arrow" /> Drag in
+                  </div>
+                </div>
+                <div className="drop-meta">PNG · JPG · WEBP — max 20 MB</div>
+                <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}}
+                       onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+              </div>
+            </div>
+          </div>
+        </div>
+        <footer className="statusbar">
+          <div className="group">
+            <span>● Idle</span>
+            <div className="sep"/>
+            <span>Model · {model.name}</span>
+          </div>
+          <div className="group">
+            <span>GhostOperator v2 · End-to-end encrypted</span>
+          </div>
+        </footer>
+        <TweaksPanelUI t={t} setTweak={setTweak} />
+        {toast && <div className="toast">▸ {toast}</div>}
+      </div>
+    );
+  }
+
+  // ─── FULL STATE (3-column layout) ────────────────────────────────────────────
+  return (
+    <div className="app">
+      {Topbar}
+      <div className="workspace">
+
+        {/* ── LEFT: Source ── */}
+        <div className="col left">
+          <div className="section-label">01 · Source</div>
+
+          <div className="src-preview">
+            <div className="src-preview-hd">
+              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:180}}>{sourceName}</span>
+              <button className="swap" onClick={resetImage}>swap ⤴</button>
+            </div>
+            {sourceUrl && (
+              <div style={{padding:'10px 10px 0'}}>
+                <div className="thumb" style={{backgroundImage:`url(${sourceUrl})`,backgroundSize:'cover',backgroundPosition:'top center',height:90}}>
+                  {ocrStatus === 'scanning' && <div className="scan" />}
+                  {ocrStatus === 'scanning' && <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(10,11,13,.65)',fontFamily:'var(--mono)',fontSize:10,letterSpacing:'.18em',color:'var(--accent)'}}>SCANNING…</div>}
+                  {ocrStatus === 'done'     && <div style={{position:'absolute',bottom:6,right:8,fontFamily:'var(--mono)',fontSize:9,letterSpacing:'.14em',color:'var(--accent)',textTransform:'uppercase',background:'rgba(10,11,13,.7)',padding:'2px 6px',borderRadius:3}}>OCR COMPLETE</div>}
+                  {ocrStatus === 'error'    && <div style={{position:'absolute',bottom:6,right:8,fontFamily:'var(--mono)',fontSize:9,letterSpacing:'.14em',color:'var(--danger)',textTransform:'uppercase',background:'rgba(10,11,13,.7)',padding:'2px 6px',borderRadius:3}}>OCR ERROR</div>}
+                </div>
+              </div>
+            )}
+
+            <div className="src-preview-body">
+              {ocrStatus === 'scanning' && (
+                <div style={{padding:'12px 0',display:'flex',flexDirection:'column',gap:8}}>
+                  {[90,70,55].map((w,i) => (
+                    <div key={i} className="skel" style={{width:`${w}%`,height:12,borderRadius:4}}/>
+                  ))}
+                </div>
+              )}
+              {ocrStatus === 'error' && (
+                <div style={{padding:'12px 0',fontFamily:'var(--mono)',fontSize:11,color:'var(--danger)',letterSpacing:'.04em'}}>
+                  Could not parse thread. Try a clearer screenshot.
+                </div>
+              )}
+              {(ocrStatus === 'done' || ocrStatus === 'idle') && parsedThread.length === 0 && ocrStatus === 'done' && (
+                <div style={{padding:'12px 0',fontFamily:'var(--mono)',fontSize:11,color:'var(--ink-fade)',letterSpacing:'.04em'}}>
+                  No messages detected.
+                </div>
+              )}
+              {parsedThread.map((m, i) => (
+                <div key={i} className={`bubble-row ${m.who}`}>
+                  <div className={`bubble ${m.who}`}>
+                    {m.text}
+                    {m.t && <span className="tstamp">{m.t}</span>}
+                  </div>
+                </div>
+              ))}
+              {parsedThread.length > 0 && (
+                <div className="thread-meta">
+                  <span>parsed · {parsedThread.length} msg</span>
+                  <span>conf 94%</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {t.showHistory && (
+            <>
+              <div className="section-label">Recent intercepts</div>
+              <div className="history">
+                <div className="history-item" style={{opacity:.4}}>
+                  <div className="history-thumb"/>
+                  <div className="history-text" style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--ink-fade)'}}>No history yet</div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── CENTER: Parameters ── */}
+        <div className="col center">
+          <div className="section-label">02 · Parameters</div>
+
+          <div className="controls-card">
+            {/* Tone chips */}
+            <div className="field">
+              <label>Tone — pick up to 4</label>
+              <div className="tone-chips">
+                {TONES.map(tn => (
+                  <button key={tn} className={`tone-chip ${tones.includes(tn) ? 'on' : ''}`}
+                          onClick={() => toggleTone(tn)}>
+                    {tones.includes(tn) && <span className="x"><Icon name="check" size={10}/></span>}
+                    {tn}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Length + Model grid */}
+            <div className="controls-grid">
+              <div className="field">
+                <label>Length</label>
+                <div className="tone-chips">
+                  {['shorter','default','longer'].map(l => (
+                    <button key={l} className={`tone-chip ${length === l ? 'on' : ''}`}
+                            onClick={() => setLength(l)}>{l}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="field">
+                <label>Model</label>
+                <div className="model-select-wrap" style={{position:'relative'}}>
+                  <button className="model-select" onClick={() => setModelOpen(o => !o)}>
+                    <span className="left">
+                      <span className="model-icon"><Icon name="bolt" size={12}/></span>
+                      <span>
+                        <div className="model-name">{model.name}</div>
+                        <div className="model-rate">{model.rate}</div>
+                      </span>
+                    </span>
+                    <span className="model-caret"><Icon name="chevDown" size={12}/></span>
+                  </button>
+
+                  {modelOpen && (
+                    <div style={{
+                      position:'absolute',top:'calc(100% + 6px)',left:0,right:0,zIndex:50,
+                      background:'var(--bg-elev-2)',border:'1px solid var(--line-strong)',
+                      borderRadius:6,padding:4,
+                    }}>
+                      {MODELS.map(m => (
+                        <div key={m.id}
+                             onClick={() => { setModel(m); setModelOpen(false); }}
+                             style={{
+                               padding:'8px 10px',borderRadius:4,cursor:'pointer',
+                               background: model.id === m.id ? 'var(--accent-dim)' : 'transparent',
+                             }}
+                             onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,.04)'}
+                             onMouseLeave={(e) => e.currentTarget.style.background = model.id === m.id ? 'var(--accent-dim)' : 'transparent'}
+                        >
+                          <div style={{fontSize:13,color:'var(--ink)'}}>{m.icon} {m.name}</div>
+                          <div style={{fontFamily:'var(--mono)',fontSize:10,color:'var(--ink-fade)',letterSpacing:'.04em'}}>{m.desc} · {m.rate}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Context */}
+            <div className="field">
+              <label>
+                Context / instructions{' '}
+                <span className="hint" style={{marginLeft:8,textTransform:'none',letterSpacing:0}}>optional</span>
+              </label>
+              <textarea
+                placeholder="e.g. She just replied to my karaoke joke. Keep it light, no apologies."
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                maxLength={300}
+              />
+              <span className="hint" style={{alignSelf:'flex-end'}}>{context.length} / 300</span>
+            </div>
+
+            {/* CTA */}
+            <div className="cta-row">
+              <button
+                className="btn-generate"
+                disabled={phase === 'generating' || ocrStatus === 'scanning'}
+                onClick={generate}
+              >
+                {phase === 'generating' ? (
+                  <>● ● ● Drafting candidates…</>
+                ) : (
+                  <>
+                    <Icon name="bolt" size={12}/>
+                    Generate {tones.length || 3} repl{tones.length === 1 ? 'y' : 'ies'}
+                    <span className="kbd">⌘↵</span>
+                  </>
+                )}
+              </button>
+              <button className="btn-ghost" onClick={() => {
+                setContext(''); setTones(['Witty','Dry','Sincere']); setLength('default');
+              }}>Reset</button>
+            </div>
+          </div>
+
+          {/* Tip strip */}
+          <div style={{
+            display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
+            border:'1px solid var(--line)',borderRadius:6,background:'rgba(255,255,255,.015)',
+            fontFamily:'var(--mono)',fontSize:11,color:'var(--ink-dim)',letterSpacing:'.04em',
+          }}>
+            <span style={{color:'var(--accent)'}}>▸</span>
+            Tip — star a reply to lock it as a tone reference. Future drafts will lean toward that voice.
+          </div>
+        </div>
+
+        {/* ── RIGHT: Candidates ── */}
+        <div className="col right">
+          <div className="intercept-hd">
+            <div className="section-label" style={{margin:0}}>03 · Candidate replies</div>
+            {phase === 'result' && (
+              <button className="regenerate" onClick={generate}>
+                <Icon name="refresh" size={11}/>REGEN ALL
+              </button>
+            )}
+          </div>
+
+          {candidates.length === 0 && phase === 'ready' && (
+            <div style={{
+              flex:1,display:'flex',alignItems:'center',justifyContent:'center',
+              fontFamily:'var(--mono)',fontSize:11,color:'var(--ink-fade)',letterSpacing:'.1em',
+              textTransform:'uppercase',textAlign:'center',lineHeight:1.8,
+            }}>
+              {ocrStatus === 'done' ? 'Set parameters and generate' : ocrStatus === 'scanning' ? 'Scanning image…' : 'Configure and generate'}
+            </div>
+          )}
+
+          <div className="candidates">
+            {candidates.map((c, idx) => (
+              <div key={c.id} className={`cand ${c.streaming ? 'streaming' : ''} ${starred[c.id] ? 'starred' : ''}`}>
+                <div className="cand-hd">
+                  <div className="cand-tag">
+                    <span className="num">{String(idx + 1).padStart(2, '0')}</span>
+                    {c.tone}
+                  </div>
+                  {!c.streaming && c.confidence > 0 && (
+                    <div className="cand-conf">
+                      <span>conf</span>
+                      <div className="conf-bar">
+                        <span style={{width:`${Math.round(c.confidence * 100)}%`}}/>
+                      </div>
+                      <span>{Math.round(c.confidence * 100)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="cand-body">
+                  {c.streaming ? (
+                    c.text ? c.text : (
+                      <>
+                        <div className="skel w-90"/>
+                        <div className="skel w-70"/>
+                        <div className="skel w-40"/>
+                      </>
+                    )
+                  ) : (c.text || <span style={{color:'var(--ink-fade)',fontStyle:'italic',fontSize:12}}>No content generated</span>)}
+                </div>
+
+                {!c.streaming && (
+                  <div className="cand-meta">
+                    <div className="stats">
+                      {c.tokens > 0 && <span>{c.tokens} tok</span>}
+                      {c.latency && c.latency !== '—' && <span>{c.latency}s</span>}
+                    </div>
+                    <div className="cand-actions">
+                      <button className="iconbtn" title="Edit" onClick={() => {
+                        const ed = prompt('Edit reply', c.text);
+                        if (ed !== null) setCandidates(prev => prev.map((x, i) => i === idx ? {...x, text: ed} : x));
+                      }}>
+                        <Icon name="edit"/>
+                      </button>
+                      <button className="iconbtn" title="Regenerate" onClick={() => regenerateOne(idx)}>
+                        <Icon name="refresh"/>
+                      </button>
+                      <button className={`iconbtn ${starred[c.id] ? 'on' : ''}`} title="Star"
+                              onClick={() => setStarred(s => ({...s, [c.id]: !s[c.id]}))}>
+                        <Icon name={starred[c.id] ? 'star' : 'starO'}/>
+                      </button>
+                      <button className="iconbtn" title="Copy" onClick={() => copyText(c.text)}>
+                        <Icon name="copy"/>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {candidates.length > 0 && (
+            <div style={{
+              marginTop:'auto',paddingTop:16,fontFamily:'var(--mono)',fontSize:10,
+              color:'var(--ink-fade)',letterSpacing:'.12em',textTransform:'uppercase',
+              display:'flex',justifyContent:'space-between',
+            }}>
+              <span>End of channel</span>
+              <span>{candidates.filter(c => !c.streaming).length} drafted</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Status bar */}
+      <footer className="statusbar">
+        <div className="group">
+          <span>● {phase === 'generating' ? 'Drafting' : ocrStatus === 'scanning' ? 'Scanning' : 'Idle'}</span>
+          <div className="sep"/>
+          <span>Model · {model.name}</span>
+          <div className="sep"/>
+          <span>Drafts · {candidates.filter(c => !c.streaming).length}</span>
+        </div>
+        <div className="group">
+          <span>GhostOperator v2 · End-to-end encrypted</span>
+        </div>
+      </footer>
+
+      <TweaksPanelUI t={t} setTweak={setTweak}/>
+      {toast && <div className="toast">▸ {toast}</div>}
+    </div>
+  );
+}
+
+// ─── Tweaks panel ─────────────────────────────────────────────────────────────
+function TweaksPanelUI({ t, setTweak }) {
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection label="Theme"/>
+      <TweakColor
+        label="Accent"
+        value={t.theme === 'phosphor' ? '#9beab4' : t.theme === 'amber' ? '#f1b35a' : t.theme === 'cyan' ? '#8fd6ec' : '#b48aef'}
+        options={['#9beab4','#f1b35a','#8fd6ec','#b48aef']}
+        onChange={(v) => {
+          const map = { '#9beab4':'phosphor', '#f1b35a':'amber', '#8fd6ec':'cyan', '#b48aef':'violet' };
+          setTweak('theme', map[v] || 'phosphor');
+        }}
+      />
+      <TweakRadio
+        label="Density"
+        value={t.density}
+        options={['compact','regular']}
+        onChange={(v) => setTweak('density', v)}
+      />
+      <TweakSection label="Display"/>
+      <TweakToggle
+        label="Show history panel"
+        value={t.showHistory}
+        onChange={(v) => setTweak('showHistory', v)}
+      />
+    </TweaksPanel>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+</script>
+</body>
+</html>

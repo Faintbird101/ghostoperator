@@ -1,0 +1,29 @@
+# ── Build stage ──────────────────────────────────────────────────────────────
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /build
+
+# Copy module files — no go.sum since project has no external dependencies
+COPY backend/go.mod ./
+RUN go mod download
+
+# Copy source and compile a static binary
+COPY backend/ .
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags="-s -w" \
+      -o server \
+      ./cmd/server
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM alpine:3.20
+
+# ca-certificates for outbound TLS (Gemini API calls)
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app
+COPY --from=builder /build/server .
+
+EXPOSE 9898
+
+# -static "" disables the static file server (nginx handles the frontend)
+CMD ["./server", "-port", "9898", "-static", ""]

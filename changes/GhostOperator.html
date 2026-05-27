@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GhostOperator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel">
+// components.jsx — shared smaller components for GhostOperator
+
+const Icon = ({ name, size = 14 }) => {
+  const paths = {
+    copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 012-2h10" /></>,
+    star: <path d="M12 2l3 7 7 .6-5.3 4.7 1.6 7-6.3-3.7-6.3 3.7 1.6-7L2 9.6 9 9l3-7z" fill="currentColor" stroke="none" />,
+    starOutline: <path d="M12 2l3 7 7 .6-5.3 4.7 1.6 7-6.3-3.7-6.3 3.7 1.6-7L2 9.6 9 9l3-7z" />,
+    refresh: <><path d="M3 12a9 9 0 0115.5-6.3L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 01-15.5 6.3L3 16" /><path d="M3 21v-5h5" /></>,
+    edit: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 113 3L7 19l-4 1 1-4 12.5-12.5z" /></>,
+    arrow: <><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></>,
+    x: <><path d="M18 6L6 18M6 6l12 12" /></>,
+    bolt: <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" fill="currentColor" stroke="none" />,
+    image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="M21 15l-5-5L5 21" /></>,
+    check: <path d="M4 12l5 5L20 6" />,
+    expand: <><path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" /></>,
+    chevDown: <path d="M6 9l6 6 6-6" />,
+    paperclip: <path d="M21 11l-9.5 9.5a5.5 5.5 0 11-7.8-7.8L13 3.5a3.5 3.5 0 014.95 4.95L9 17.5a1.5 1.5 0 11-2.1-2.1L15 7.5" />,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {paths[name]}
+    </svg>
+  );
+};
+
+// Mock chat thread shown in the source preview
+const MockThread = ({ scenario }) => {
+  const threads = {
+    casual: [
+      { who: 'them', text: 'okay but the karaoke thing was your idea', t: '9:42 PM' },
+      { who: 'you',  text: 'i refuse to acknowledge that', t: '9:42 PM' },
+      { who: 'them', text: 'lol I have receipts 📸', t: '9:43 PM' },
+      { who: 'them', text: 'so. round 2 friday?', t: '9:44 PM' },
+    ],
+    professional: [
+      { who: 'them', text: 'Sharing the revised scope today — can we hop on a quick call tomorrow?', t: '2:14 PM' },
+      { who: 'them', text: 'Morning works best on my end.', t: '2:14 PM' },
+    ],
+    flirty: [
+      { who: 'them', text: 'so are we doing dinner or are you going to keep pretending you\'re "thinking about it"', t: '11:08 PM' },
+    ],
+  };
+  const msgs = threads[scenario] || threads.casual;
+  return (
+    <>
+      {msgs.map((m, i) => (
+        <div key={i} className={`bubble-row ${m.who}`}>
+          <div className={`bubble ${m.who}`}>
+            {m.text}
+            <span className="tstamp">{m.t}</span>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+};
+
+// Generated reply candidates per scenario × tone
+const CANDIDATE_BANK = {
+  casual: {
+    Witty:    "the receipts will be expunged on a technicality. friday's on.",
+    Dry:      "Acknowledged. Friday. I'll prepare a defense.",
+    Sincere:  "okay fine, it was my idea. friday, yes — same place?",
+    Concise:  "friday works. you pick the place.",
+    Playful:  "subpoena denied 😤 friday, your turn to embarrass yourself",
+  },
+  professional: {
+    Witty:    "Happy to. I'll keep the camera on and the dry wit dialed down.",
+    Dry:      "Tomorrow morning works. Send a slot and I'll confirm.",
+    Sincere:  "Sounds good — I've read through the scope. 9:30 or 10:30 tomorrow?",
+    Concise:  "9:30 tomorrow. Calendar invite on the way.",
+    Playful:  "Morning it is. I'll bring the strong coffee opinions.",
+  },
+  flirty: {
+    Witty:    "I'm thinking about it the way you think about dessert menus.",
+    Dry:      "Dinner. Pick a place that's hard to get into so I can blame you for the wait.",
+    Sincere:  "Dinner. I want to. Where?",
+    Concise:  "Dinner. Friday. You pick.",
+    Playful:  "fine, you win. dinner. but I'm ordering the most expensive thing on principle.",
+  },
+};
+
+const buildCandidates = (scenario, tones, length) => {
+  const bank = CANDIDATE_BANK[scenario] || CANDIDATE_BANK.casual;
+  const chosen = (tones.length ? tones : ['Witty', 'Dry', 'Sincere']).slice(0, 4);
+  return chosen.map((tone, i) => {
+    let text = bank[tone] || bank.Witty;
+    if (length === 'shorter' && text.length > 50) text = text.split(/[.,]/)[0].trim() + '.';
+    if (length === 'longer') text = text + ' ' + (bank.Sincere || '');
+    const conf = 0.72 + Math.random() * 0.22;
+    return {
+      id: `c${i}-${tone}`,
+      tone,
+      text,
+      confidence: conf,
+      tokens: Math.round(text.split(/\s+/).length * 1.3),
+      latency: (0.4 + Math.random() * 0.8).toFixed(2),
+    };
+  });
+};
+
+
+
+// ─── App ───
+
+// app.jsx — GhostOperator main app
+
+const { useState, useEffect, useRef, useMemo } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "phosphor",
+  "density": "regular",
+  "showHistory": true,
+  "scenario": "flirty"
+}/*EDITMODE-END*/;
+
+const TONES = ['Witty', 'Dry', 'Sincere', 'Concise', 'Playful'];
+const SCENARIOS = [
+  { id: 'casual',       label: 'Casual banter' },
+  { id: 'professional', label: 'Work / scheduling' },
+  { id: 'flirty',       label: 'Flirty / DM' },
+];
+const MODELS = [
+  { id: 'op-2',     name: 'Operator 2',      rate: '10 req/min · 250/day',  desc: 'Default — fast, balanced' },
+  { id: 'op-2-pro', name: 'Operator 2 Pro',  rate: '5 req/min · 100/day',   desc: 'Highest reasoning depth' },
+  { id: 'op-mini',  name: 'Operator Mini',   rate: '30 req/min · 1500/day', desc: 'Lightweight, snappy' },
+];
+
+const HISTORY = [
+  { t: '14m', text: 'okay so the karaoke thing was your idea' },
+  { t: '2h',  text: 'Could you send the revised quote by EOD?' },
+  { t: '8h',  text: 'just got off the train, where are you?' },
+  { t: 'yest', text: 'thinking we push the launch to next sprint' },
+];
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [hasImage, setHasImage] = useState(true);  // demo: pre-loaded so user sees full UI
+  const [dragOver, setDragOver] = useState(false);
+  const [scenario, setScenario] = useState(t.scenario || 'casual');
+  const [tones, setTones] = useState(['Witty', 'Dry', 'Sincere']);
+  const [length, setLength] = useState('default');
+  const [context, setContext] = useState('');
+  const [model, setModel] = useState(MODELS[0]);
+  const [modelOpen, setModelOpen] = useState(false);
+  const [phase, setPhase] = useState('ready'); // ready | generating | result
+  const [candidates, setCandidates] = useState(() => buildCandidates('casual', ['Witty','Dry','Sincere'], 'default'));
+  const [starred, setStarred] = useState({});
+  const [toast, setToast] = useState(null);
+  const fileInputRef = useRef(null);
+
+  // Apply theme + density at body level
+  useEffect(() => {
+    document.body.dataset.theme = t.theme;
+    document.body.dataset.density = t.density;
+  }, [t.theme, t.density]);
+
+  useEffect(() => { setScenario(t.scenario); }, [t.scenario]);
+
+  // Keyboard: Cmd/Ctrl+Enter to generate
+  useEffect(() => {
+    const h = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (hasImage && phase !== 'generating') generate();
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  });
+
+  // Paste image from clipboard
+  useEffect(() => {
+    const onPaste = (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const it of items) {
+        if (it.type.startsWith('image/')) {
+          setHasImage(true);
+          showToast('Image captured from clipboard');
+          break;
+        }
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 1800);
+  };
+
+  const toggleTone = (tn) => {
+    setTones(p => p.includes(tn) ? p.filter(x => x !== tn) : [...p, tn].slice(0, 4));
+  };
+
+  const generate = () => {
+    setPhase('generating');
+    const skeletons = (tones.length ? tones : ['Witty','Dry','Sincere']).slice(0, 4).map((tn, i) => ({
+      id: `s-${i}`, tone: tn, streaming: true,
+    }));
+    setCandidates(skeletons);
+    // stagger reveal
+    skeletons.forEach((_, i) => {
+      setTimeout(() => {
+        setCandidates(prev => {
+          const next = [...prev];
+          const real = buildCandidates(scenario, tones, length);
+          next[i] = real[i];
+          return next;
+        });
+        if (i === skeletons.length - 1) setPhase('result');
+      }, 600 + i * 450);
+    });
+  };
+
+  const regenerate = (idx) => {
+    const real = buildCandidates(scenario, tones, length);
+    setCandidates(prev => prev.map((c, i) => i === idx ? real[i] : c));
+    showToast('Regenerated');
+  };
+
+  const copyText = (text) => {
+    if (navigator.clipboard) navigator.clipboard.writeText(text);
+    showToast('Copied to clipboard');
+  };
+
+  // ───────────────────────────────────────────────────────────
+  const Topbar = (
+    <header className="topbar">
+      <div className="brand">
+        <div className="brand-mark" />
+        <div className="brand-text">
+          <span className="brand-name">GHOST_OPERATOR</span>
+          <span className="brand-sub">Intercept · Analyze · Reply</span>
+        </div>
+      </div>
+      <div className="topbar-meta">
+        <span><span className="dot" />Channel Live</span>
+        <span>Session · A7-2240</span>
+        <span>{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })} UTC</span>
+      </div>
+    </header>
+  );
+
+  // EMPTY STATE
+  if (!hasImage) {
+    return (
+      <div className="app">
+        {Topbar}
+        <div className="workspace no-image">
+          <div className="col">
+            <div className="empty-stage">
+              <div className="empty-heading">
+                <div className="ticker">Awaiting intercept</div>
+                <h1>Read the room<br/><em>for you.</em></h1>
+                <p>Drop a chat screenshot. GhostOperator reads the thread, weighs the tone, and drafts a few candidate replies you can actually send.</p>
+              </div>
+
+              <div
+                className={`dropzone ${dragOver ? 'drag' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); setHasImage(true); showToast('Image received'); }}
+              >
+                <div className="corners"><span className="tl"/><span className="tr"/><span className="bl"/><span className="br"/></div>
+                <div className="drop-actions">
+                  <div className="chip-action" onClick={() => fileInputRef.current?.click()}>
+                    <Icon name="image" /> Browse files
+                  </div>
+                  <span className="drop-divider">— OR —</span>
+                  <div className="chip-action">
+                    <kbd>⌘V</kbd> Paste from clipboard
+                  </div>
+                  <span className="drop-divider">— OR —</span>
+                  <div className="chip-action">
+                    <Icon name="arrow" /> Drag in
+                  </div>
+                </div>
+                <div className="drop-meta">PNG · JPG · WEBP · HEIC — max 20 MB</div>
+                <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={() => { setHasImage(true); showToast('Image received'); }} />
+              </div>
+
+              <div className="preset-row">
+                <span className="label">Try a demo</span>
+                {SCENARIOS.map(s => (
+                  <button key={s.id} className={`preset-pill ${scenario === s.id ? 'on' : ''}`} onClick={() => { setScenario(s.id); setHasImage(true); }}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <StatusBar model={model} candidates={[]} />
+        <TweaksPanelUI t={t} setTweak={setTweak} />
+        {toast && <div className="toast">▸ {toast}</div>}
+      </div>
+    );
+  }
+
+  // FULL STATE
+  return (
+    <div className="app">
+      {Topbar}
+      <div className="workspace">
+
+        {/* LEFT — source */}
+        <div className="col left">
+          <div className="section-label">01 · Source</div>
+          <div className="src-preview">
+            <div className="src-preview-hd">
+              <span>screenshot.png · 1170×512</span>
+              <button className="swap" onClick={() => setHasImage(false)}>swap ⤴</button>
+            </div>
+            <div style={{padding:'10px 10px 0'}}>
+              <div className="thumb">
+                <div className="scan" />
+                CHAT THUMBNAIL · OCR COMPLETE
+              </div>
+            </div>
+            <div className="src-preview-body">
+              <MockThread scenario={scenario} />
+              <div className="thread-meta">
+                <span>parsed · {scenario === 'casual' ? '4' : scenario === 'professional' ? '2' : '1'} msg</span>
+                <span>conf 94%</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="section-label">Scenario</div>
+          <div className="preset-row" style={{justifyContent:'flex-start'}}>
+            {SCENARIOS.map(s => (
+              <button key={s.id} className={`preset-pill ${scenario === s.id ? 'on' : ''}`} onClick={() => setScenario(s.id)}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {t.showHistory && (
+            <>
+              <div className="section-label">Recent intercepts</div>
+              <div className="history">
+                {HISTORY.map((h, i) => (
+                  <div key={i} className="history-item">
+                    <div className="history-thumb" />
+                    <div className="history-text">{h.text}</div>
+                    <div className="history-time">{h.t}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* CENTER — controls */}
+        <div className="col center">
+          <div className="section-label">02 · Parameters</div>
+
+          <div className="controls-card">
+            <div className="field">
+              <label>Tone — pick up to 4</label>
+              <div className="tone-chips">
+                {TONES.map(tn => (
+                  <button key={tn} className={`tone-chip ${tones.includes(tn) ? 'on' : ''}`} onClick={() => toggleTone(tn)}>
+                    {tones.includes(tn) && <span className="x"><Icon name="check" size={10}/></span>}
+                    {tn}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="controls-grid">
+              <div className="field">
+                <label>Length</label>
+                <div className="tone-chips">
+                  {['shorter','default','longer'].map(l => (
+                    <button key={l} className={`tone-chip ${length === l ? 'on' : ''}`} onClick={() => setLength(l)}>{l}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="field">
+                <label>Model</label>
+                <div style={{position:'relative'}}>
+                  <button className="model-select" onClick={() => setModelOpen(o => !o)}>
+                    <span className="left">
+                      <span className="model-icon"><Icon name="bolt" size={12}/></span>
+                      <span>
+                        <div className="model-name">{model.name}</div>
+                        <div className="model-rate">{model.rate}</div>
+                      </span>
+                    </span>
+                    <span className="model-caret"><Icon name="chevDown" size={12}/></span>
+                  </button>
+                  {modelOpen && (
+                    <div style={{
+                      position:'absolute', top:'calc(100% + 6px)', left:0, right:0, zIndex:50,
+                      background:'var(--bg-elev-2)', border:'1px solid var(--line-strong)', borderRadius:6, padding:4
+                    }}>
+                      {MODELS.map(m => (
+                        <div key={m.id}
+                          onClick={() => { setModel(m); setModelOpen(false); }}
+                          style={{padding:'8px 10px', borderRadius:4, cursor:'pointer', background: model.id === m.id ? 'var(--accent-dim)' : 'transparent'}}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,.04)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = model.id === m.id ? 'var(--accent-dim)' : 'transparent'}
+                        >
+                          <div style={{fontSize:13, color:'var(--ink)'}}>{m.name}</div>
+                          <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-fade)', letterSpacing:'.04em'}}>{m.desc} · {m.rate}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="field">
+              <label>Context / instructions <span className="hint" style={{marginLeft:8,textTransform:'none',letterSpacing:0}}>optional</span></label>
+              <textarea
+                placeholder="e.g. She just replied to a joke I made about karaoke. Keep it light, no apologies."
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                maxLength={300}
+              />
+              <span className="hint" style={{alignSelf:'flex-end'}}>{context.length} / 300</span>
+            </div>
+
+            <div className="cta-row">
+              <button className="btn-generate" disabled={phase === 'generating'} onClick={generate}>
+                {phase === 'generating' ? (
+                  <>● ● ● Drafting candidates…</>
+                ) : (
+                  <>
+                    <Icon name="bolt" size={12} />
+                    Generate {tones.length || 3} replies
+                    <span className="kbd">⌘ ↵</span>
+                  </>
+                )}
+              </button>
+              <button className="btn-ghost" onClick={() => { setContext(''); setTones(['Witty','Dry','Sincere']); setLength('default'); }}>Reset</button>
+            </div>
+          </div>
+
+          {/* Tip strip */}
+          <div style={{
+            display:'flex', alignItems:'center', gap:10, padding:'10px 14px',
+            border:'1px solid var(--line)', borderRadius:6, background:'rgba(255,255,255,.015)',
+            fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-dim)', letterSpacing:'.04em'
+          }}>
+            <span style={{color:'var(--accent)'}}>▸</span>
+            Tip — star a reply to lock it as a tone reference. Future drafts will lean toward that voice.
+          </div>
+        </div>
+
+        {/* RIGHT — candidates */}
+        <div className="col right">
+          <div className="intercept-hd">
+            <div className="section-label" style={{margin:0}}>03 · Candidate replies</div>
+            {phase === 'result' && (
+              <button className="regenerate" onClick={generate}>
+                <Icon name="refresh" size={11} />REGEN ALL
+              </button>
+            )}
+          </div>
+
+          <div className="candidates">
+            {candidates.map((c, idx) => (
+              <div key={c.id} className={`cand ${c.streaming ? 'streaming' : ''} ${starred[c.id] ? 'starred' : ''}`}>
+                <div className="cand-hd">
+                  <div className="cand-tag">
+                    <span className="num">{String(idx + 1).padStart(2,'0')}</span>
+                    {c.tone}
+                  </div>
+                  {!c.streaming && (
+                    <div className="cand-conf">
+                      <span>conf</span>
+                      <div className="conf-bar"><span style={{width:`${Math.round(c.confidence * 100)}%`}} /></div>
+                      <span>{Math.round(c.confidence * 100)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="cand-body">
+                  {c.streaming ? (
+                    <>
+                      <div className="skel w-90"/>
+                      <div className="skel w-70"/>
+                      <div className="skel w-40"/>
+                    </>
+                  ) : c.text}
+                </div>
+
+                {!c.streaming && (
+                  <div className="cand-meta">
+                    <div className="stats">
+                      <span>{c.tokens} tok</span>
+                      <span>{c.latency}s</span>
+                    </div>
+                    <div className="cand-actions">
+                      <button className="iconbtn" title="Edit" onClick={() => { const ed = prompt('Edit reply', c.text); if (ed) setCandidates(prev => prev.map((x,i) => i===idx ? {...x, text: ed} : x)); }}>
+                        <Icon name="edit" />
+                      </button>
+                      <button className="iconbtn" title="Regenerate" onClick={() => regenerate(idx)}>
+                        <Icon name="refresh" />
+                      </button>
+                      <button className={`iconbtn ${starred[c.id] ? 'on' : ''}`} title="Star" onClick={() => setStarred(s => ({...s, [c.id]: !s[c.id]}))}>
+                        <Icon name={starred[c.id] ? 'star' : 'starOutline'} />
+                      </button>
+                      <button className="iconbtn" title="Copy" onClick={() => copyText(c.text)}>
+                        <Icon name="copy" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div style={{
+            marginTop:'auto', paddingTop:16, fontFamily:'var(--mono)', fontSize:10,
+            color:'var(--ink-fade)', letterSpacing:'.12em', textTransform:'uppercase',
+            display:'flex',justifyContent:'space-between'
+          }}>
+            <span>End of channel</span>
+            <span>{candidates.length} drafted</span>
+          </div>
+        </div>
+      </div>
+
+      <StatusBar model={model} candidates={candidates} phase={phase} />
+      <TweaksPanelUI t={t} setTweak={setTweak} />
+      {toast && <div className="toast">▸ {toast}</div>}
+    </div>
+  );
+}
+
+function StatusBar({ model, candidates, phase }) {
+  return (
+    <footer className="statusbar">
+      <div className="group">
+        <span>● {phase === 'generating' ? 'Drafting' : 'Idle'}</span>
+        <div className="sep" />
+        <span>Model · {model.name}</span>
+        <div className="sep" />
+        <span>Drafts · {candidates.filter(c => !c.streaming).length}</span>
+      </div>
+      <div className="group">
+        <span>v2.1.0 · build a7-2240</span>
+        <div className="sep" />
+        <span>End-to-end encrypted</span>
+      </div>
+    </footer>
+  );
+}
+
+function TweaksPanelUI({ t, setTweak }) {
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection label="Theme" />
+      <TweakColor
+        label="Accent"
+        value={t.theme === 'phosphor' ? '#9beab4' : t.theme === 'amber' ? '#f1b35a' : t.theme === 'cyan' ? '#8fd6ec' : '#b48aef'}
+        options={['#9beab4', '#f1b35a', '#8fd6ec', '#b48aef']}
+        onChange={(v) => {
+          const map = {'#9beab4':'phosphor','#f1b35a':'amber','#8fd6ec':'cyan','#b48aef':'violet'};
+          setTweak('theme', map[v] || 'phosphor');
+        }}
+      />
+      <TweakRadio label="Density" value={t.density} options={['compact','regular']} onChange={(v) => setTweak('density', v)} />
+
+      <TweakSection label="Demo content" />
+      <TweakSelect label="Scenario" value={t.scenario}
+        options={[
+          { value:'casual',       label:'Casual banter'},
+          { value:'professional', label:'Work / scheduling'},
+          { value:'flirty',       label:'Flirty / DM'},
+        ]}
+        onChange={(v) => setTweak('scenario', v)} />
+      <TweakToggle label="Show history panel" value={t.showHistory} onChange={(v) => setTweak('showHistory', v)} />
+    </TweaksPanel>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+# Version control
+.git
+.gitignore
+
+# Secrets — injected at runtime via env, never baked into images
+.env
+.env.*
+!.env.example
+
+# Development artefacts
+changes/
+run_tests.mjs
+frontend/tests.html
+*.md
+!README.md
+
+# Go test binaries and caches
+**/*_test.go
+**/testdata/
+backend/vendor/
+
+# Node / editor
+node_modules/
+.vscode/
+.idea/
