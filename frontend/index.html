@@ -23,21 +23,56 @@ const { useState, useEffect, useRef, useCallback } = React;
 
 // ─── Models ──────────────────────────────────────────────────────────────────
 const MODELS = [
-  { id: 'gemini-2.5-flash',       icon: '⚡', name: '2.5 Flash',       rate: '10 req/min · 250/day',   desc: 'Best default · fast, balanced' },
-  { id: 'gemini-2.5-flash-lite',  icon: '💨', name: '2.5 Flash Lite',  rate: '30 req/min · 1500/day',  desc: 'More quota · lightweight' },
-  { id: 'gemini-flash-latest',    icon: '🔄', name: 'Flash Latest',    rate: '10 req/min',              desc: 'Tracks current release' },
-  { id: 'gemini-3-flash-preview', icon: '🔮', name: '3 Flash Preview', rate: '~5 req/min',              desc: 'Experimental · next gen' },
-  { id: 'gemini-3.5-flash',       icon: '🌟', name: '3.5 Flash',       rate: '~10 req/min',             desc: 'Latest generation' },
-  { id: 'gemini-3.1-flash-lite',  icon: '💨', name: '3.1 Flash Lite',  rate: '~30 req/min',             desc: 'Fast · high quota' },
+  { id: 'gemini-2.5-flash',       icon: '⚡', name: '2.5 Flash',       rpm: 10,  daily: 250,  rate: '10 rpm · 250/day',   desc: 'Best default · fast, balanced' },
+  { id: 'gemini-2.5-flash-lite',  icon: '💨', name: '2.5 Flash Lite',  rpm: 30,  daily: 1500, rate: '30 rpm · 1500/day',  desc: 'More quota · lightweight' },
+  { id: 'gemini-flash-latest',    icon: '🔄', name: 'Flash Latest',    rpm: 10,  daily: null, rate: '10 rpm',              desc: 'Tracks current release' },
+  { id: 'gemini-3-flash-preview', icon: '🔮', name: '3 Flash Preview', rpm: 5,   daily: null, rate: '~5 rpm',              desc: 'Experimental · next gen' },
+  { id: 'gemini-3.5-flash',       icon: '🌟', name: '3.5 Flash',       rpm: 10,  daily: null, rate: '~10 rpm',             desc: 'Latest generation' },
+  { id: 'gemini-3.1-flash-lite',  icon: '💨', name: '3.1 Flash Lite',  rpm: 30,  daily: null, rate: '~30 rpm',             desc: 'Fast · high quota' },
 ];
 
-const TONES = ['Witty', 'Dry', 'Sincere', 'Concise', 'Playful'];
+const TONES = ['Witty', 'Dry', 'Sincere', 'Concise', 'Playful', 'Casual', 'Default'];
 
 const TWEAK_DEFAULTS = {
   theme: 'phosphor',
   density: 'regular',
   showHistory: false,
 };
+
+// ─── Rate limit tracker ───────────────────────────────────────────────────────
+function useModelUsage() {
+  const getStore = () => {
+    try {
+      const raw = localStorage.getItem('go_usage');
+      const s = raw ? JSON.parse(raw) : {};
+      const today = new Date().toDateString();
+      if (s.date !== today) return { date: today, models: {} };
+      return s;
+    } catch { return { date: new Date().toDateString(), models: {} }; }
+  };
+
+  const [store, setStore] = useState(getStore);
+
+  const recordUse = (modelId, count = 1) => {
+    const s = getStore();
+    s.models[modelId] = (s.models[modelId] || 0) + count;
+    try { localStorage.setItem('go_usage', JSON.stringify(s)); } catch {}
+    setStore({ ...s });
+  };
+
+  const getUsage = (modelId) => store.models[modelId] || 0;
+
+  // Returns: null | 'warn' | 'limit'
+  const getStatus = (model) => {
+    if (!model.daily) return null;
+    const used = getUsage(model.id);
+    if (used >= model.daily) return 'limit';
+    if (used >= Math.floor(model.daily * 0.8)) return 'warn';
+    return null;
+  };
+
+  return { recordUse, getUsage, getStatus };
+}
 
 // ─── Icon ─────────────────────────────────────────────────────────────────────
 const Icon = ({ name, size = 14 }) => {
@@ -55,6 +90,7 @@ const Icon = ({ name, size = 14 }) => {
     chevDown: <path d="M6 9l6 6 6-6"/>,
     scan:     <><path d="M3 7V5a2 2 0 012-2h2"/><path d="M17 3h2a2 2 0 012 2v2"/><path d="M21 17v2a2 2 0 01-2 2h-2"/><path d="M7 21H5a2 2 0 01-2-2v-2"/><line x1="3" y1="12" x2="21" y2="12"/></>,
     camera:   <><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></>,
+    warn:     <><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -64,58 +100,119 @@ const Icon = ({ name, size = 14 }) => {
   );
 };
 
+// ─── Model selector (reusable) ────────────────────────────────────────────────
+function ModelSelector({ model, setModel, getUsage, getStatus, compact = false }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (!e.target.closest('.model-select-wrap')) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const status = getStatus(model);
+  const used   = getUsage(model.id);
+
+  return (
+    <div className="model-select-wrap" style={{ position: 'relative' }}>
+      <button className={`model-select ${compact ? 'compact' : ''}`} onClick={() => setOpen(o => !o)}>
+        <span className="left">
+          <span className="model-icon"><Icon name="bolt" size={12}/></span>
+          <span>
+            <div className="model-name">{model.name}</div>
+            {!compact && <div className="model-rate">{model.rate}</div>}
+          </span>
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {status === 'limit' && <span className="limit-badge limit">LIMIT</span>}
+          {status === 'warn'  && <span className="limit-badge warn">~{model.daily - used} left</span>}
+          <span className="model-caret"><Icon name="chevDown" size={12}/></span>
+        </span>
+      </button>
+
+      {open && (
+        <div className="model-dropdown">
+          {MODELS.map(m => {
+            const ms   = getStatus(m);
+            const mu   = getUsage(m.id);
+            const pct  = m.daily ? Math.min(100, Math.round((mu / m.daily) * 100)) : 0;
+            return (
+              <div key={m.id}
+                   className={`model-option ${model.id === m.id ? 'selected' : ''} ${ms === 'limit' ? 'depleted' : ''}`}
+                   onClick={() => { setModel(m); setOpen(false); }}>
+                <div className="model-option-top">
+                  <span>{m.icon} {m.name}</span>
+                  {ms === 'limit' && <span className="limit-badge limit">Limit reached</span>}
+                  {ms === 'warn'  && <span className="limit-badge warn">{m.daily - mu} left today</span>}
+                </div>
+                <div className="model-option-sub">{m.desc} · {m.rate}</div>
+                {m.daily && (
+                  <div className="model-usage-bar">
+                    <div className="model-usage-fill" style={{ width: `${pct}%`, background: ms === 'limit' ? 'var(--danger)' : ms === 'warn' ? 'var(--warn)' : 'var(--accent)' }}/>
+                    <span className="model-usage-label">{mu} / {m.daily} today</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
-  // Device detection
-  const [isTouch] = useState(() => 'ontouchstart' in window || navigator.maxTouchPoints > 0);
+  // Screen-size based mobile detection
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 767);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth <= 767);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
-  // Mobile tab navigation: 'source' | 'params' | 'results'
+  // Mobile tab navigation
   const [activeTab, setActiveTab] = useState('source');
 
   // Image state
   const [hasImage, setHasImage]         = useState(false);
   const [dragOver, setDragOver]         = useState(false);
-  const [sourceFile, setSourceFile]     = useState(null);
   const [sourceUrl, setSourceUrl]       = useState(null);
   const [sourceName, setSourceName]     = useState('');
 
   // OCR state
   const [parsedThread, setParsedThread] = useState([]);
-  const [ocrStatus, setOcrStatus]       = useState('idle'); // idle | scanning | done | error
+  const [ocrStatus, setOcrStatus]       = useState('idle');
 
   // Parameters
   const [tones, setTones]   = useState(['Witty', 'Dry', 'Sincere']);
   const [length, setLength] = useState('default');
   const [context, setContext] = useState('');
   const [model, setModel]   = useState(MODELS[0]);
-  const [modelOpen, setModelOpen] = useState(false);
+  const [homeModelOpen, setHomeModelOpen] = useState(false);
 
   // Generation state
-  const [phase, setPhase]         = useState('ready'); // ready | generating | result
+  const [phase, setPhase]           = useState('ready');
   const [candidates, setCandidates] = useState([]);
-  const [starred, setStarred]     = useState({});
+  const [starred, setStarred]       = useState({});
+
+  // Usage tracking
+  const { recordUse, getUsage, getStatus } = useModelUsage();
 
   // UI
-  const [toast, setToast]   = useState(null);
+  const [toast, setToast]      = useState(null);
   const fileInputRef   = useRef(null);
   const cameraInputRef = useRef(null);
   const sessionId = useRef(Math.random().toString(36).slice(2,8).toUpperCase()).current;
 
-  // Apply theme and density to body
+  // Apply theme and density
   useEffect(() => {
     document.body.dataset.theme   = t.theme;
     document.body.dataset.density = t.density;
   }, [t.theme, t.density]);
-
-  // Close model dropdown on outside click
-  useEffect(() => {
-    if (!modelOpen) return;
-    const h = (e) => { if (!e.target.closest('.model-select-wrap')) setModelOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [modelOpen]);
 
   // Keyboard: Cmd/Ctrl+Enter to generate
   useEffect(() => {
@@ -148,21 +245,25 @@ function App() {
 
   const showToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2200);
+    setTimeout(() => setToast(null), 2600);
   };
 
-  // ── handleFile — OCR the uploaded image ────────────────────────────────────
+  // ── handleFile ────────────────────────────────────────────────────────────
   const handleFile = async (file) => {
     if (!file?.type.startsWith('image/')) {
       showToast('Please drop an image file (PNG, JPG, WebP)');
       return;
     }
 
-    // Revoke any previous object URL
+    // Warn before using if at limit
+    if (getStatus(model) === 'limit') {
+      showToast('Daily limit reached for this model — switch to another');
+      return;
+    }
+
     if (sourceUrl) URL.revokeObjectURL(sourceUrl);
 
     const url = URL.createObjectURL(file);
-    setSourceFile(file);
     setSourceUrl(url);
     setSourceName(file.name || 'screenshot.png');
     setHasImage(true);
@@ -171,8 +272,8 @@ function App() {
     setCandidates([]);
     setPhase('ready');
 
-    // Auto-advance to params tab on mobile
-    if (isTouch) setActiveTab('params');
+    // Auto-advance to params on mobile
+    if (isMobile) setActiveTab('params');
 
     const fd = new FormData();
     fd.append('image', file);
@@ -180,6 +281,7 @@ function App() {
 
     try {
       const res = await fetch('/api/ocr', { method: 'POST', body: fd });
+      recordUse(model.id, 1); // count OCR call
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `HTTP ${res.status}`);
@@ -187,9 +289,12 @@ function App() {
       const { thread } = await res.json();
       setParsedThread(thread || []);
       setOcrStatus('done');
-      if (!thread || thread.length === 0) {
-        showToast('No messages detected — check the screenshot');
-      }
+      if (!thread || thread.length === 0) showToast('No messages detected — check the screenshot');
+
+      // Warn if now approaching limit
+      const st = getStatus(model);
+      if (st === 'limit') showToast('Daily limit reached for ' + model.name + ' — switch model');
+      else if (st === 'warn') showToast('Approaching daily limit for ' + model.name);
     } catch (err) {
       console.error('OCR error:', err);
       setOcrStatus('error');
@@ -197,17 +302,19 @@ function App() {
     }
   };
 
-  // ── generate — draft replies via SSE ───────────────────────────────────────
+  // ── generate ──────────────────────────────────────────────────────────────
   const generate = async () => {
+    if (getStatus(model) === 'limit') {
+      showToast('Daily limit reached for ' + model.name + ' — switch model in parameters');
+      return;
+    }
+
     setPhase('generating');
     setStarred({});
 
-    // Auto-advance to results tab on mobile
-    if (isTouch) setActiveTab('results');
+    if (isMobile) setActiveTab('results');
 
     const requested = (tones.length ? tones : ['Witty', 'Dry', 'Sincere']).slice(0, 4);
-
-    // Seed skeletons immediately
     const skeletons = requested.map((tn, i) => ({
       id: `c${i}-${tn.toLowerCase()}`, tone: tn, text: '', streaming: true,
     }));
@@ -217,18 +324,14 @@ function App() {
       const res = await fetch('/api/draft-replies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          thread: parsedThread,
-          tones: requested,
-          length,
-          context,
-          model: model.id,
-        }),
+        body: JSON.stringify({ thread: parsedThread, tones: requested, length, context, model: model.id }),
       });
+
+      recordUse(model.id, requested.length); // each draft = 1 call
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const reader = res.body.getReader();
+      const reader  = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
 
@@ -236,9 +339,8 @@ function App() {
         const { done, value } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
-
         const lines = buf.split('\n');
-        buf = lines.pop(); // keep incomplete line
+        buf = lines.pop();
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
@@ -257,9 +359,7 @@ function App() {
               console.error('Draft error:', chunk);
               continue;
             }
-            if (chunk.streaming) {
-              // Skeleton already seeded — nothing to do
-            } else if (chunk.delta !== undefined) {
+            if (chunk.delta !== undefined) {
               setCandidates(prev => prev.map(c =>
                 c.id === chunk.id ? { ...c, text: c.text + chunk.delta } : c
               ));
@@ -282,9 +382,14 @@ function App() {
     }
 
     setPhase(p => p === 'generating' ? 'result' : p);
+
+    // Post-generate limit warning
+    const st = getStatus(model);
+    if (st === 'limit') showToast('Daily limit reached for ' + model.name + ' — switch model');
+    else if (st === 'warn') showToast('Approaching daily limit for ' + model.name);
   };
 
-  // ── regenerate one candidate ────────────────────────────────────────────────
+  // ── regenerate one ────────────────────────────────────────────────────────
   const regenerateOne = async (idx) => {
     const cand = candidates[idx];
     if (!cand) return;
@@ -295,21 +400,14 @@ function App() {
       const res = await fetch('/api/draft-replies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          thread: parsedThread,
-          tones: [cand.tone],
-          length,
-          context,
-          model: model.id,
-        }),
+        body: JSON.stringify({ thread: parsedThread, tones: [cand.tone], length, context, model: model.id }),
       });
-
+      recordUse(model.id, 1);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buf = '';
-      let newText = '';
+      let buf = '', newText = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -317,7 +415,6 @@ function App() {
         buf += decoder.decode(value, { stream: true });
         const lines = buf.split('\n');
         buf = lines.pop();
-
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           const raw = line.slice(6).trim();
@@ -355,7 +452,6 @@ function App() {
   const resetImage = () => {
     if (sourceUrl) URL.revokeObjectURL(sourceUrl);
     setHasImage(false);
-    setSourceFile(null);
     setSourceUrl(null);
     setSourceName('');
     setParsedThread([]);
@@ -365,19 +461,7 @@ function App() {
     setActiveTab('source');
   };
 
-  // ─── Shared inputs ───────────────────────────────────────────────────────────
-  const FileInputs = (
-    <>
-      <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}}
-             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value=''; }} />
-      {isTouch && (
-        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
-               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value=''; }} />
-      )}
-    </>
-  );
-
-  // ─── Topbar ─────────────────────────────────────────────────────────────────
+  // ─── Topbar ──────────────────────────────────────────────────────────────────
   const Topbar = (
     <header className="topbar">
       <div className="brand">
@@ -395,7 +479,7 @@ function App() {
     </header>
   );
 
-  // ─── Mobile Tab Bar (only when image is loaded) ──────────────────────────────
+  // ─── Mobile Tab Bar ───────────────────────────────────────────────────────────
   const MobileTabBar = hasImage ? (
     <nav className="mobile-tabs">
       {[
@@ -403,23 +487,44 @@ function App() {
         { id: 'params',  label: '02 · Params'  },
         { id: 'results', label: '03 · Replies' },
       ].map(tab => (
-        <button
-          key={tab.id}
+        <button key={tab.id}
           className={`mobile-tab ${activeTab === tab.id ? 'active' : ''}`}
-          onClick={() => setActiveTab(tab.id)}
-        >
+          onClick={() => setActiveTab(tab.id)}>
           {tab.label}
         </button>
       ))}
     </nav>
   ) : null;
 
-  // ─── EMPTY STATE ─────────────────────────────────────────────────────────────
+  // ─── Hidden file inputs ────────────────────────────────────────────────────────
+  const FileInputs = (
+    <>
+      <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}}
+             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value=''; }} />
+      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
+             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value=''; }} />
+    </>
+  );
+
+  // ─── Limit alert banner (shown on home page if current model is at/near limit) ─
+  const modelStatus = getStatus(model);
+  const LimitBanner = modelStatus ? (
+    <div className={`limit-banner ${modelStatus}`}>
+      <Icon name="warn" size={13}/>
+      {modelStatus === 'limit'
+        ? <span><strong>{model.name}</strong> has reached its daily limit. Switch model below before scanning.</span>
+        : <span><strong>{model.name}</strong> is approaching its daily limit ({model.daily - getUsage(model.id)} requests left today).</span>
+      }
+    </div>
+  ) : null;
+
+  // ─── EMPTY STATE ──────────────────────────────────────────────────────────────
   if (!hasImage) {
     return (
       <div className="app">
         {Topbar}
         {FileInputs}
+        {LimitBanner}
         <div className="workspace no-image">
           <div className="col">
             <div className="empty-stage">
@@ -427,6 +532,20 @@ function App() {
                 <div className="ticker">Awaiting intercept</div>
                 <h1>Read the room<br /><em>for you.</em></h1>
                 <p>Drop a chat screenshot. GhostOperator reads the thread, weighs the tone, and drafts candidate replies you can actually send.</p>
+              </div>
+
+              {/* ── Model selector on home page ── */}
+              <div className="home-model-row">
+                <span className="home-model-label">Model</span>
+                <div style={{ flex: 1, maxWidth: 320 }}>
+                  <ModelSelector
+                    model={model}
+                    setModel={setModel}
+                    getUsage={getUsage}
+                    getStatus={getStatus}
+                    compact={false}
+                  />
+                </div>
               </div>
 
               <div
@@ -447,25 +566,20 @@ function App() {
                   <div className="chip-action" onClick={() => fileInputRef.current?.click()}>
                     <Icon name="image" /> Browse files
                   </div>
-                  {isTouch ? (
-                    <>
-                      <span className="drop-divider">— OR —</span>
-                      <div className="chip-action camera-chip" onClick={() => cameraInputRef.current?.click()}>
-                        <Icon name="camera" size={15}/> Take photo
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <span className="drop-divider">— OR —</span>
-                      <div className="chip-action">
-                        <kbd>⌘V</kbd> Paste from clipboard
-                      </div>
-                      <span className="drop-divider">— OR —</span>
-                      <div className="chip-action">
-                        <Icon name="arrow" /> Drag in
-                      </div>
-                    </>
-                  )}
+                  {/* Camera: visible on mobile via CSS, hidden on desktop */}
+                  <span className="drop-divider mobile-only">— OR —</span>
+                  <div className="chip-action camera-chip" onClick={() => cameraInputRef.current?.click()}>
+                    <Icon name="camera" size={15}/> Take photo
+                  </div>
+                  {/* Paste + Drag: hidden on mobile via CSS */}
+                  <span className="drop-divider desktop-only">— OR —</span>
+                  <div className="chip-action desktop-only">
+                    <kbd>⌘V</kbd> Paste from clipboard
+                  </div>
+                  <span className="drop-divider desktop-only">— OR —</span>
+                  <div className="chip-action desktop-only">
+                    <Icon name="arrow" /> Drag in
+                  </div>
                 </div>
                 <div className="drop-meta">PNG · JPG · WEBP — max 20 MB</div>
               </div>
@@ -477,8 +591,10 @@ function App() {
             <span>● Idle</span>
             <div className="sep"/>
             <span>Model · {model.name}</span>
+            {modelStatus === 'limit' && <><div className="sep"/><span style={{color:'var(--danger)'}}>● Limit reached</span></>}
+            {modelStatus === 'warn'  && <><div className="sep"/><span style={{color:'var(--warn)'}}>● Near limit</span></>}
           </div>
-          <div className="group">
+          <div className="group status-right">
             <span>GhostOperator v2 · End-to-end encrypted</span>
           </div>
         </footer>
@@ -488,7 +604,7 @@ function App() {
     );
   }
 
-  // ─── FULL STATE (3-column layout) ────────────────────────────────────────────
+  // ─── FULL STATE (3-column layout) ─────────────────────────────────────────────
   return (
     <div className="app">
       {Topbar}
@@ -515,13 +631,10 @@ function App() {
                 </div>
               </div>
             )}
-
             <div className="src-preview-body">
               {ocrStatus === 'scanning' && (
                 <div style={{padding:'12px 0',display:'flex',flexDirection:'column',gap:8}}>
-                  {[90,70,55].map((w,i) => (
-                    <div key={i} className="skel" style={{width:`${w}%`,height:12,borderRadius:4}}/>
-                  ))}
+                  {[90,70,55].map((w,i) => <div key={i} className="skel" style={{width:`${w}%`,height:12,borderRadius:4}}/>)}
                 </div>
               )}
               {ocrStatus === 'error' && (
@@ -529,7 +642,7 @@ function App() {
                   Could not parse thread. Try a clearer screenshot.
                 </div>
               )}
-              {(ocrStatus === 'done' || ocrStatus === 'idle') && parsedThread.length === 0 && ocrStatus === 'done' && (
+              {ocrStatus === 'done' && parsedThread.length === 0 && (
                 <div style={{padding:'12px 0',fontFamily:'var(--mono)',fontSize:11,color:'var(--ink-fade)',letterSpacing:'.04em'}}>
                   No messages detected.
                 </div>
@@ -552,11 +665,9 @@ function App() {
           </div>
 
           {/* Mobile: continue button */}
-          {isTouch && (
-            <button className="btn-mobile-next" onClick={() => setActiveTab('params')}>
-              Set Parameters →
-            </button>
-          )}
+          <button className="btn-mobile-next" onClick={() => setActiveTab('params')}>
+            Set Parameters →
+          </button>
 
           {t.showHistory && (
             <>
@@ -576,7 +687,6 @@ function App() {
           <div className="section-label">02 · Parameters</div>
 
           <div className="controls-card">
-            {/* Tone chips */}
             <div className="field">
               <label>Tone — pick up to 4</label>
               <div className="tone-chips">
@@ -590,7 +700,6 @@ function App() {
               </div>
             </div>
 
-            {/* Length + Model grid */}
             <div className="controls-grid">
               <div className="field">
                 <label>Length</label>
@@ -604,45 +713,15 @@ function App() {
 
               <div className="field">
                 <label>Model</label>
-                <div className="model-select-wrap" style={{position:'relative'}}>
-                  <button className="model-select" onClick={() => setModelOpen(o => !o)}>
-                    <span className="left">
-                      <span className="model-icon"><Icon name="bolt" size={12}/></span>
-                      <span>
-                        <div className="model-name">{model.name}</div>
-                        <div className="model-rate">{model.rate}</div>
-                      </span>
-                    </span>
-                    <span className="model-caret"><Icon name="chevDown" size={12}/></span>
-                  </button>
-
-                  {modelOpen && (
-                    <div style={{
-                      position:'absolute',top:'calc(100% + 6px)',left:0,right:0,zIndex:50,
-                      background:'var(--bg-elev-2)',border:'1px solid var(--line-strong)',
-                      borderRadius:6,padding:4,
-                    }}>
-                      {MODELS.map(m => (
-                        <div key={m.id}
-                             onClick={() => { setModel(m); setModelOpen(false); }}
-                             style={{
-                               padding:'8px 10px',borderRadius:4,cursor:'pointer',
-                               background: model.id === m.id ? 'var(--accent-dim)' : 'transparent',
-                             }}
-                             onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,.04)'}
-                             onMouseLeave={(e) => e.currentTarget.style.background = model.id === m.id ? 'var(--accent-dim)' : 'transparent'}
-                        >
-                          <div style={{fontSize:13,color:'var(--ink)'}}>{m.icon} {m.name}</div>
-                          <div style={{fontFamily:'var(--mono)',fontSize:10,color:'var(--ink-fade)',letterSpacing:'.04em'}}>{m.desc} · {m.rate}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <ModelSelector
+                  model={model}
+                  setModel={setModel}
+                  getUsage={getUsage}
+                  getStatus={getStatus}
+                />
               </div>
             </div>
 
-            {/* Context */}
             <div className="field">
               <label>
                 Context / instructions{' '}
@@ -657,11 +736,10 @@ function App() {
               <span className="hint" style={{alignSelf:'flex-end'}}>{context.length} / 300</span>
             </div>
 
-            {/* CTA */}
             <div className="cta-row">
               <button
                 className="btn-generate"
-                disabled={phase === 'generating' || ocrStatus === 'scanning'}
+                disabled={phase === 'generating' || ocrStatus === 'scanning' || modelStatus === 'limit'}
                 onClick={generate}
               >
                 {phase === 'generating' ? (
@@ -680,7 +758,6 @@ function App() {
             </div>
           </div>
 
-          {/* Tip strip */}
           <div style={{
             display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
             border:'1px solid var(--line)',borderRadius:6,background:'rgba(255,255,255,.015)',
@@ -723,9 +800,7 @@ function App() {
                   {!c.streaming && c.confidence > 0 && (
                     <div className="cand-conf">
                       <span>conf</span>
-                      <div className="conf-bar">
-                        <span style={{width:`${Math.round(c.confidence * 100)}%`}}/>
-                      </div>
+                      <div className="conf-bar"><span style={{width:`${Math.round(c.confidence * 100)}%`}}/></div>
                       <span>{Math.round(c.confidence * 100)}</span>
                     </div>
                   )}
@@ -734,11 +809,7 @@ function App() {
                 <div className="cand-body">
                   {c.streaming ? (
                     c.text ? c.text : (
-                      <>
-                        <div className="skel w-90"/>
-                        <div className="skel w-70"/>
-                        <div className="skel w-40"/>
-                      </>
+                      <><div className="skel w-90"/><div className="skel w-70"/><div className="skel w-40"/></>
                     )
                   ) : (c.text || <span style={{color:'var(--ink-fade)',fontStyle:'italic',fontSize:12}}>No content generated</span>)}
                 </div>
@@ -753,19 +824,11 @@ function App() {
                       <button className="iconbtn" title="Edit" onClick={() => {
                         const ed = prompt('Edit reply', c.text);
                         if (ed !== null) setCandidates(prev => prev.map((x, i) => i === idx ? {...x, text: ed} : x));
-                      }}>
-                        <Icon name="edit"/>
-                      </button>
-                      <button className="iconbtn" title="Regenerate" onClick={() => regenerateOne(idx)}>
-                        <Icon name="refresh"/>
-                      </button>
+                      }}><Icon name="edit"/></button>
+                      <button className="iconbtn" title="Regenerate" onClick={() => regenerateOne(idx)}><Icon name="refresh"/></button>
                       <button className={`iconbtn ${starred[c.id] ? 'on' : ''}`} title="Star"
-                              onClick={() => setStarred(s => ({...s, [c.id]: !s[c.id]}))}>
-                        <Icon name={starred[c.id] ? 'star' : 'starO'}/>
-                      </button>
-                      <button className="iconbtn" title="Copy" onClick={() => copyText(c.text)}>
-                        <Icon name="copy"/>
-                      </button>
+                              onClick={() => setStarred(s => ({...s, [c.id]: !s[c.id]}))}><Icon name={starred[c.id] ? 'star' : 'starO'}/></button>
+                      <button className="iconbtn" title="Copy" onClick={() => copyText(c.text)}><Icon name="copy"/></button>
                     </div>
                   </div>
                 )}
@@ -786,16 +849,17 @@ function App() {
         </div>
       </div>
 
-      {/* Status bar */}
       <footer className="statusbar">
         <div className="group">
           <span>● {phase === 'generating' ? 'Drafting' : ocrStatus === 'scanning' ? 'Scanning' : 'Idle'}</span>
           <div className="sep"/>
           <span>Model · {model.name}</span>
+          {modelStatus === 'limit' && <><div className="sep"/><span style={{color:'var(--danger)'}}>● Limit reached</span></>}
+          {modelStatus === 'warn'  && <><div className="sep"/><span style={{color:'var(--warn)'}}>● Near limit</span></>}
           <div className="sep"/>
           <span>Drafts · {candidates.filter(c => !c.streaming).length}</span>
         </div>
-        <div className="group">
+        <div className="group status-right">
           <span>GhostOperator v2 · End-to-end encrypted</span>
         </div>
       </footer>
@@ -820,18 +884,11 @@ function TweaksPanelUI({ t, setTweak }) {
           setTweak('theme', map[v] || 'phosphor');
         }}
       />
-      <TweakRadio
-        label="Density"
-        value={t.density}
-        options={['compact','regular']}
-        onChange={(v) => setTweak('density', v)}
-      />
+      <TweakRadio label="Density" value={t.density} options={['compact','regular']}
+        onChange={(v) => setTweak('density', v)} />
       <TweakSection label="Display"/>
-      <TweakToggle
-        label="Show history panel"
-        value={t.showHistory}
-        onChange={(v) => setTweak('showHistory', v)}
-      />
+      <TweakToggle label="Show history panel" value={t.showHistory}
+        onChange={(v) => setTweak('showHistory', v)} />
     </TweaksPanel>
   );
 }
