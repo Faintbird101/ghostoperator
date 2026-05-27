@@ -21,6 +21,10 @@
 
 const { useState, useEffect, useRef, useCallback } = React;
 
+// ─── Backend URL ─────────────────────────────────────────────────────────────
+// Call Render directly — Netlify's proxy buffers SSE and truncates streams.
+const BACKEND = 'https://ghostoperator.onrender.com';
+
 // ─── Models ──────────────────────────────────────────────────────────────────
 const MODELS = [
   { id: 'gemini-2.5-flash',       icon: '⚡', name: '2.5 Flash',       rpm: 10,  daily: 250,  rate: '10 rpm · 250/day',   desc: 'Best default · fast, balanced' },
@@ -280,7 +284,7 @@ function App() {
     fd.append('model', model.id);
 
     try {
-      const res = await fetch('/api/ocr', { method: 'POST', body: fd });
+      const res = await fetch(`${BACKEND}/api/ocr`, { method: 'POST', body: fd });
       recordUse(model.id, 1); // count OCR call
       if (!res.ok) {
         const text = await res.text();
@@ -321,7 +325,7 @@ function App() {
     setCandidates(skeletons);
 
     try {
-      const res = await fetch('/api/draft-replies', {
+      const res = await fetch(`${BACKEND}/api/draft-replies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ thread: parsedThread, tones: requested, length, context, model: model.id }),
@@ -397,7 +401,7 @@ function App() {
     setCandidates(prev => prev.map((c, i) => i === idx ? { ...c, streaming: true, text: '' } : c));
 
     try {
-      const res = await fetch('/api/draft-replies', {
+      const res = await fetch(`${BACKEND}/api/draft-replies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ thread: parsedThread, tones: [cand.tone], length, context, model: model.id }),

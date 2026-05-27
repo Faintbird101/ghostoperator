@@ -441,6 +441,8 @@ func (c *Client) streamDraft(threadText, tone, length, context, model string, ou
 		"Sincere": "Genuine, warm, and direct. Authentic without being sappy.",
 		"Concise": "Minimal words. Maximum effect. Strip it right down.",
 		"Playful": "Upbeat and fun. Energy and enthusiasm — emoji welcome.",
+		"Casual":  "Relaxed and informal. Like texting a close friend — easy, natural, zero formality.",
+		"Default": "Balanced and natural. Mirror the conversation's existing tone exactly.",
 	}[tone]
 	if toneDesc == "" {
 		toneDesc = "Natural and conversational."
@@ -468,7 +470,7 @@ func (c *Client) streamDraft(threadText, tone, length, context, model string, ou
 			},
 		}},
 		GenerationConfig: map[string]any{
-			"maxOutputTokens": 256,
+			"maxOutputTokens": 1024,
 			"temperature":     0.9,
 		},
 	}
