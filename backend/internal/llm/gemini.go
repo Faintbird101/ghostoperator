@@ -210,14 +210,28 @@ func (c *Client) Stream(imageData []byte, mediaType string, opts StreamOptions, 
 
 // ─── OCR / thread extraction ─────────────────────────────────────────────────
 
-const ocrSystemPrompt = `Extract all chat messages visible in this screenshot.
-Return ONLY a JSON array with this exact format:
-[{"who":"them","text":"message text","t":"timestamp if visible"}]
+// ocrSystemPrompt is the primary extraction prompt.
+const ocrSystemPrompt = `Extract all chat messages from this screenshot.
+Return ONLY a valid JSON array — no explanation, no markdown fences, no extra text.
+Format: [{"who":"context","text":"message text","t":"timestamp or empty string"}]
+
 Rules:
-- "who" is "you" for the right-aligned / own messages, "them" for the other person
-- Include every message in order, top to bottom
-- "t" is the timestamp string if visible, otherwise empty string ""
-- Return only the JSON array — no markdown fences, no explanation`
+- The LAST (most recent) message must be "who":"reply_to" — it is the message to respond to
+- Every earlier message must be "who":"context"
+- Do NOT use bubble color, alignment, or side to classify messages
+- Include all messages in chronological order, top to bottom
+- If the image is blurry or partially unclear, extract whatever text you can make out — never refuse
+- "t" is the timestamp string if visible, otherwise ""
+- Output ONLY the JSON array`
+
+// ocrFallbackPrompt is used when the primary prompt fails — simpler and more permissive.
+const ocrFallbackPrompt = `Look at this chat screenshot and list every visible message.
+Even if the image is blurry or cropped, do your best to read the text.
+Return ONLY a JSON array like this:
+[{"who":"context","text":"message here","t":""}]
+The very last message in the array must have "who":"reply_to".
+All earlier messages use "who":"context".
+Output ONLY the raw JSON array — no explanation.`
 
 // ThreadMessage is one parsed message from an OCR'd chat screenshot.
 type ThreadMessage struct {
@@ -227,26 +241,49 @@ type ThreadMessage struct {
 }
 
 // ExtractThread calls Gemini Vision to parse a chat screenshot into messages.
+// Retries up to 3 times with an increasingly permissive prompt.
 func (c *Client) ExtractThread(imageData []byte, mediaType string, model string) ([]ThreadMessage, error) {
 	if model == "" {
 		model = defaultModel
 	}
 
+	prompts := []string{ocrSystemPrompt, ocrFallbackPrompt, ocrFallbackPrompt}
+	var lastErr error
+
+	for attempt, sysPrompt := range prompts {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+		thread, err := c.extractThreadOnce(imageData, mediaType, model, sysPrompt)
+		if err == nil && len(thread) > 0 {
+			// Ensure the last message is always reply_to
+			thread[len(thread)-1].Who = "reply_to"
+			return thread, nil
+		}
+		lastErr = err
+		if err == nil {
+			lastErr = fmt.Errorf("empty thread")
+		}
+	}
+	return nil, lastErr
+}
+
+func (c *Client) extractThreadOnce(imageData []byte, mediaType, model, sysPrompt string) ([]ThreadMessage, error) {
 	encoded := base64.StdEncoding.EncodeToString(imageData)
 
 	payload := geminiRequest{
 		SystemInstruction: geminiContent{
-			Parts: []geminiPart{{Text: ocrSystemPrompt}},
+			Parts: []geminiPart{{Text: sysPrompt}},
 		},
 		Contents: []geminiContent{{
 			Role: "user",
 			Parts: []geminiPart{
 				{InlineData: &geminiInline{MimeType: mediaType, Data: encoded}},
-				{Text: "Extract the chat messages from this screenshot. Return only the JSON array."},
+				{Text: "Extract every chat message from this screenshot. Return only the JSON array."},
 			},
 		}},
 		GenerationConfig: map[string]any{
-			"maxOutputTokens": 1024,
+			"maxOutputTokens": 2048,
 			"temperature":     0,
 		},
 	}
@@ -289,6 +326,7 @@ func (c *Client) ExtractThread(imageData []byte, mediaType string, model string)
 					Text string `json:"text"`
 				} `json:"parts"`
 			} `json:"content"`
+			FinishReason string `json:"finishReason"`
 		} `json:"candidates"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
@@ -298,18 +336,38 @@ func (c *Client) ExtractThread(imageData []byte, mediaType string, model string)
 		return nil, fmt.Errorf("no content in response")
 	}
 
-	text := strings.TrimSpace(result.Candidates[0].Content.Parts[0].Text)
-	// Strip markdown fences Gemini sometimes adds
-	text = strings.TrimPrefix(text, "```json")
-	text = strings.TrimPrefix(text, "```")
-	text = strings.TrimSuffix(text, "```")
-	text = strings.TrimSpace(text)
+	raw := result.Candidates[0].Content.Parts[0].Text
+	jsonText, ok := extractJSONArray(raw)
+	if !ok {
+		return nil, fmt.Errorf("no JSON array found in response (raw: %.200s)", raw)
+	}
 
 	var thread []ThreadMessage
-	if err := json.Unmarshal([]byte(text), &thread); err != nil {
-		return nil, fmt.Errorf("parse thread JSON: %w (raw: %.200s)", err, text)
+	if err := json.Unmarshal([]byte(jsonText), &thread); err != nil {
+		return nil, fmt.Errorf("parse thread JSON: %w (raw: %.200s)", err, jsonText)
 	}
 	return thread, nil
+}
+
+// extractJSONArray finds the first [...] array in s, stripping markdown fences and surrounding text.
+func extractJSONArray(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	// Strip common markdown fences
+	for _, fence := range []string{"```json", "```"} {
+		if strings.HasPrefix(s, fence) {
+			s = strings.TrimPrefix(s, fence)
+			s = strings.TrimSuffix(s, "```")
+			s = strings.TrimSpace(s)
+			break
+		}
+	}
+	// Find the outermost [...] even if Gemini added explanation text around it
+	start := strings.Index(s, "[")
+	end := strings.LastIndex(s, "]")
+	if start == -1 || end == -1 || end <= start {
+		return "", false
+	}
+	return s[start : end+1], true
 }
 
 // ─── Draft reply generation ───────────────────────────────────────────────────
@@ -412,15 +470,36 @@ func (c *Client) DraftReplies(thread []ThreadMessage, opts DraftOptions, out cha
 }
 
 func buildThreadText(thread []ThreadMessage) string {
-	var sb strings.Builder
-	for _, m := range thread {
+	var ctx strings.Builder
+	var replyTo string
+
+	for i, m := range thread {
 		ts := ""
 		if m.T != "" {
 			ts = "[" + m.T + "] "
 		}
-		sb.WriteString(ts + m.Who + ": " + m.Text + "\n")
+		if m.Who == "reply_to" || i == len(thread)-1 {
+			replyTo = ts + m.Text
+		} else {
+			ctx.WriteString(ts)
+			ctx.WriteString(m.Text)
+			ctx.WriteString("\n")
+		}
 	}
-	return strings.TrimSpace(sb.String())
+
+	var result strings.Builder
+	if ctx.Len() > 0 {
+		result.WriteString("Conversation history:\n")
+		result.WriteString(strings.TrimSpace(ctx.String()))
+	}
+	if replyTo != "" {
+		if result.Len() > 0 {
+			result.WriteString("\n\n")
+		}
+		result.WriteString("Message to reply to:\n")
+		result.WriteString(replyTo)
+	}
+	return result.String()
 }
 
 func (c *Client) streamDraft(threadText, tone, length, context, model string, out chan<- StreamChunk) {
@@ -512,15 +591,15 @@ func (c *Client) streamDraft(threadText, tone, length, context, model string, ou
 	}
 
 	sysPrompt := fmt.Sprintf(
-		"You are a reply assistant. Write the next message in a chat conversation.\nTone: %s\n%s\nOutput only the reply text — no quotes, no labels, no explanation.",
+		"You are a reply assistant. Write a response to the message labeled 'Message to reply to'. Use the 'Conversation history' for context and tone — but you are replying to the final message only.\nTone: %s\n%s\nOutput only the reply text — no quotes, no labels, no explanation.",
 		toneDesc, lengthHint,
 	)
 
-	userMsg := "Chat thread:\n" + threadText
+	userMsg := threadText
 	if context != "" {
 		userMsg += "\n\nAdditional context: " + context
 	}
-	userMsg += "\n\nWrite the next reply."
+	userMsg += "\n\nWrite the reply."
 
 	payload := geminiRequest{
 		SystemInstruction: geminiContent{
